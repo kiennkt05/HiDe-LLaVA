@@ -837,6 +837,8 @@ def train():
         if 'mpt' in model_args.model_name_or_path:
             config = transformers.AutoConfig.from_pretrained(model_args.model_name_or_path, trust_remote_code=True)
             config.attn_config['attn_impl'] = training_args.mpt_attn_impl
+            config.mm_vision_tower = model_args.vision_tower
+            config.mm_text_tower = model_args.text_tower
             model = LlavaMPTForCausalLM.from_pretrained(
                 model_args.model_name_or_path,
                 config=config,
@@ -847,6 +849,8 @@ def train():
             model = LlavaLlamaForCausalLM.from_pretrained(
                 model_args.model_name_or_path,
                 cache_dir=training_args.cache_dir,
+                mm_vision_tower=model_args.vision_tower,
+                mm_text_tower=model_args.text_tower,
                 **bnb_model_from_pretrained_args,
             )
     else:
