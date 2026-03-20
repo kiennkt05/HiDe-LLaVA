@@ -2,6 +2,17 @@ import os
 import argparse
 import json
 import re
+
+# Secure monkeypatch to bypass SPICE evaluator natively broken on Java 15+ without standalone Nashorn jars.
+# SPICE isn't included in the `metrics_to_print` anyway, so we just return a dummy score.
+try:
+    from pycocoevalcap.spice.spice import Spice
+    def dummy_spice_compute_score(self, gts, res):
+        print("Skipping SPICE evaluation due to Java 15+ Nashorn missing...")
+        return 0.0, [0.0] * len(gts)
+    Spice.compute_score = dummy_spice_compute_score
+except ImportError:
+    pass
 from openai import OpenAI
 from multiprocessing import Pool, cpu_count
 from nltk.translate.bleu_score import sentence_bleu, SmoothingFunction
@@ -54,7 +65,8 @@ def merge_captions(pred_file, val_file, output_file):
 
     # 将验证数据中的 captions 根据 image_id 组织成字典，image_id -> [captions]
     val_dict = defaultdict(list)
-    for item in val_data['annotations']:
+    annotations = val_data.get('annotations', val_data) if isinstance(val_data, dict) else val_data
+    for item in annotations:
         val_dict[item['image_id']].append(item['caption'])
 
     # 合并预测数据与验证数据
@@ -77,7 +89,17 @@ def merge_captions(pred_file, val_file, output_file):
         json.dump(merged_data, f, indent=4, ensure_ascii=False)
 
 def eval_single(output_file, annotation_file, total):
-    coco = COCO(annotation_file)  # Ground truth JSON file
+    # Fix pycocotools complaining about category_id in caption datasets
+    with open(annotation_file, 'r', encoding='utf-8') as f:
+        gt_data = json.load(f)
+    if isinstance(gt_data, dict) and 'categories' in gt_data:
+        if 'annotations' in gt_data and len(gt_data['annotations']) > 0 and 'category_id' not in gt_data['annotations'][0]:
+            del gt_data['categories']
+            
+    coco = COCO()
+    coco.dataset = gt_data
+    coco.createIndex()
+    
     coco_res = coco.loadRes(output_file)  # Prediction JSON file
 
     coco_eval = COCOEvalCap(coco, coco_res)

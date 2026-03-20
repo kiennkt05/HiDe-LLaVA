@@ -46,6 +46,7 @@ class HiDeMOELoraConfig(LoraConfig):
     task_embedding_dim: int = field(default=64)
     expert_num: int = field(default=4)
     cur_task: int = field(default=4)
+    variant: str = field(default="standard")
 
     def __post_init__(self):
         self.peft_type = PeftType.MOE_LORA_HiDe
@@ -138,6 +139,7 @@ class HiDeMOELoraModel(LoraModel):
             "task_embedding_dim": lora_config.task_embedding_dim,
             "expert_num": lora_config.expert_num,
             "cur_task": lora_config.cur_task,
+            "variant": getattr(lora_config, "variant", "standard"),
         }
         loaded_in_4bit = getattr(self.model, "is_loaded_in_4bit", False)
         loaded_in_8bit = getattr(self.model, "is_loaded_in_8bit", False)
@@ -266,7 +268,7 @@ class HiDeMOELoraModel(LoraModel):
 
 class HiDeMOELoraLayer(LoraLayer):
 
-    def __init__(self, in_features: int, out_features: int, expert_num: int, cur_task: int, training: bool, layer: int, expert_weight: list):
+    def __init__(self, in_features: int, out_features: int, expert_num: int, cur_task: int, training: bool, layer: int, expert_weight: list, variant: str = "standard"):
         
         super().__init__(in_features, out_features)
         self.expert_num = expert_num
@@ -274,6 +276,7 @@ class HiDeMOELoraLayer(LoraLayer):
         self.training = training
         self.layer = layer
         self.expert_weight = expert_weight
+        self.variant = variant
 
     
     def update_layer(self, adapter_name, r, lora_alpha, lora_dropout, init_lora_weights):
@@ -287,8 +290,8 @@ class HiDeMOELoraLayer(LoraLayer):
         self.lora_dropout.update(nn.ModuleDict({adapter_name: lora_dropout_layer}))
         # Actual trainable parameters
         if r > 0:
-            self.lora_A.update(nn.ModuleDict({adapter_name: HiDeMOELinearA(self.in_features, r, self.expert_num, self.cur_task, self.training, self.layer, self.expert_weight)}))
-            self.lora_B.update(nn.ModuleDict({adapter_name: HiDeMOELinearB(r, self.out_features, self.expert_num, self.cur_task, self.training, self.layer, self.expert_weight)}))
+            self.lora_A.update(nn.ModuleDict({adapter_name: HiDeMOELinearA(self.in_features, r, self.expert_num, self.cur_task, self.training, self.layer, self.expert_weight, self.variant)}))
+            self.lora_B.update(nn.ModuleDict({adapter_name: HiDeMOELinearB(r, self.out_features, self.expert_num, self.cur_task, self.training, self.layer, self.expert_weight, self.variant)}))
             self.scaling[adapter_name] = lora_alpha / r
         if init_lora_weights:
             self.reset_lora_parameters(adapter_name)
@@ -322,6 +325,7 @@ class HiDeMOELoraLinear(nn.Linear, HiDeMOELoraLayer):
         self.expert_num = kwargs.pop("expert_num", True)
         self.te_dim = kwargs.pop("task_embedding_dim", True)
         self.cur_task = kwargs.pop("cur_task", True)
+        self.variant = kwargs.pop("variant", "standard")
 
         nn.Linear.__init__(self, in_features, out_features, **kwargs)
         HiDeMOELoraLayer.__init__(self, in_features=in_features, 
@@ -330,7 +334,8 @@ class HiDeMOELoraLinear(nn.Linear, HiDeMOELoraLayer):
                                cur_task=self.cur_task,
                                training=train_signal,
                                layer=layer,
-                               expert_weight=expert_weight)
+                               expert_weight=expert_weight,
+                               variant=self.variant)
 
         self.layer = layer
         self.expert_weight = expert_weight
@@ -433,7 +438,7 @@ class HiDeMOELoraLinear(nn.Linear, HiDeMOELoraLayer):
 
 class HiDeMOELinearA(nn.Module):
     '''MMOE based LoRA block'''
-    def __init__(self, in_features, out_features, expert_num, cur_task, training, layer, weight) -> None:
+    def __init__(self, in_features, out_features, expert_num, cur_task, training, layer, weight, variant="standard") -> None:
 
         super().__init__()
 
@@ -444,6 +449,7 @@ class HiDeMOELinearA(nn.Module):
         self.training = training
         self.layer = layer
         self.expert_weight = weight
+        self.variant = variant
 
         assert self.out_features % self.expert_num == 0  # lora rank should be divided by expert number
         self.r = self.out_features // self.expert_num
@@ -456,6 +462,9 @@ class HiDeMOELinearA(nn.Module):
         '''input x is a vector, return output is a list'''
         if self.training:
             assert 0 <= self.cur_task < self.expert_num, "Invalid current_task value"
+            if getattr(self, "variant", "standard") in ["A", "AB"] and int(self.layer) != 31:
+                output = self.loraA[0](x)
+                return output
             output = self.loraA[self.cur_task](x)
             return output
         else:
@@ -465,8 +474,11 @@ class HiDeMOELinearA(nn.Module):
                 
                 fused_weight = torch.zeros((self.r, self.in_features), device=x.device)
             
-                for i in range(self.cur_task + 1):
-                    fused_weight += merge_weight * self.loraA[i].weight
+                if getattr(self, "variant", "standard") in ["A", "AB"]:
+                    fused_weight += self.loraA[0].weight
+                else:
+                    for i in range(self.cur_task + 1):
+                        fused_weight += merge_weight * self.loraA[i].weight
 
                 with torch.no_grad(): 
                     temp_mlp.weight.copy_(fused_weight)
@@ -486,7 +498,7 @@ class HiDeMOELinearA(nn.Module):
     
 class HiDeMOELinearB(nn.Module):
     '''MMOE based LoRA block'''
-    def __init__(self, in_features, out_features, expert_num, cur_task, training, layer, weight) -> None:
+    def __init__(self, in_features, out_features, expert_num, cur_task, training, layer, weight, variant="standard") -> None:
 
         super().__init__()
 
@@ -497,6 +509,7 @@ class HiDeMOELinearB(nn.Module):
         self.training = training
         self.layer = layer
         self.expert_weight = weight
+        self.variant = variant
 
         assert self.in_features % self.expert_num == 0
         self.r = self.in_features // self.expert_num
@@ -509,7 +522,11 @@ class HiDeMOELinearB(nn.Module):
         '''input x is a list, return output is also a list'''
         if self.training:
             assert 0 <= self.cur_task < self.expert_num, "Invalid current_task value"
+            if getattr(self, "variant", "standard") == "AB" and int(self.layer) != 31:
+                output = self.loraB[0](x)
+                return output
             output = self.loraB[self.cur_task](x)
+            return output
         else:
             merge_weight = 1.0
             if int(self.layer) != 31:
@@ -517,8 +534,11 @@ class HiDeMOELinearB(nn.Module):
                 
                 fused_weight = torch.zeros((self.out_features, self.r), device=x.device)
             
-                for i in range(self.cur_task + 1):
-                    fused_weight += merge_weight * self.loraB[i].weight
+                if getattr(self, "variant", "standard") == "AB":
+                    fused_weight += self.loraB[0].weight
+                else:
+                    for i in range(self.cur_task + 1):
+                        fused_weight += merge_weight * self.loraB[i].weight
 
                 with torch.no_grad(): 
                     temp_mlp.weight.copy_(fused_weight)

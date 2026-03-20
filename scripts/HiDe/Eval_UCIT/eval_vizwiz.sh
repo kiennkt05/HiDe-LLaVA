@@ -48,6 +48,6 @@ for IDX in $(seq 0 $((CHUNKS-1))); do
 done
 
 python -m llava.eval.eval_caption \
-    --annotation-file /your_path/VizWiz-caption/val_coco_type_3000.json \
+    --annotation-file /your_path/VizWiz/val_coco_type_3000.json \
     --result-file $output_file \
     --output-dir $RESULT_DIR/$STAGE \

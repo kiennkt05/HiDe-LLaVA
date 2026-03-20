@@ -55,6 +55,15 @@ def main():
                 return f"--question-file {instructions_path}/{ds}/test_3000.json"
         return match.group()
 
+    def build_annotation_path_replacement(match):
+        for ds in datasets:
+            if ds in match.group():
+                if ds in ["VizWiz", "Flickr30k"]:
+                    return f"--annotation-file {instructions_path}/{ds}/val_coco_type_3000.json"
+                else:
+                    return f"--annotation-file {instructions_path}/{ds}/test_3000.json"
+        return match.group()
+
     script_files = []
     for root, dirs, files in os.walk("scripts"):
         for file in files:
@@ -75,7 +84,7 @@ def main():
         # Apply dataset specific replacements for --data_path and --question-file
         new_content = re.sub(r'--data_path\s+[^\s\\]+', build_data_path_replacement, new_content)
         new_content = re.sub(r'--question-file\s+[^\s\\]+', build_test_data_path_replacement, new_content)
-        new_content = re.sub(r'--annotation-file\s+[^\s\\]+', build_test_data_path_replacement, new_content)
+        new_content = re.sub(r'--annotation-file\s+[^\s\\]+', build_annotation_path_replacement, new_content)
 
         # Fix output_dir which is unique per script depending on the task name
         # We find the output_dir and replace the base part of the path, preserving the end

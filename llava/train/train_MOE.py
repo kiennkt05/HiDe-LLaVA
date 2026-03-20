@@ -116,6 +116,10 @@ class TrainingArguments(transformers.TrainingArguments):
     lora_dropout: float = 0.05
     lora_weight_path: str = ""
     lora_bias: str = "none"
+    variant: str = field(
+        default="standard",
+        metadata={"help": "Variant for LoRA layer training: ['standard', 'AB', 'A']"}
+    )
     mm_projector_lr: Optional[float] = None
     group_by_modality_length: bool = field(default=False)
 
@@ -891,6 +895,7 @@ def train():
             lora_dropout=training_args.lora_dropout,
             bias=training_args.lora_bias,
             task_type=TaskType.CAUSAL_LM_HiDe,
+            variant=training_args.variant,
             **kwargs
         )
         if training_args.bits == 16:

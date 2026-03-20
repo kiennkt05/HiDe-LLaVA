@@ -26,7 +26,7 @@ RESULT_DIR="./results/UCIT/each_dataset/Flickr30k"
 CUDA_VISIBLE_DEVICES=$GPU python -m llava.eval.model_answer \
     --model-path $MODELPATH \
     --model-base /your_path/llava-v1.5-7b \
-    --question-file /your_path/Flickr30k-cap/test_3000.json \
+    --question-file /your_path/Flickr30k/test_3000.json \
     --image-folder /your_path/datasets \
     --text-tower /your_path/clip-vit-large-patch14-336 \
     --answers-file $RESULT_DIR/$STAGE/${CHUNKS}_${IDX}.jsonl \
@@ -48,6 +48,6 @@ for IDX in $(seq 0 $((CHUNKS-1))); do
 done
 
 python -m llava.eval.eval_caption \
-    --annotation-file /your_path/Flickr30k-cap/val_coco_type_3000.json \
+    --annotation-file /your_path/Flickr30k/val_coco_type_3000.json \
     --result-file $output_file \
     --output-dir $RESULT_DIR/$STAGE \
