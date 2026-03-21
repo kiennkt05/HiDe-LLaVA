@@ -410,14 +410,27 @@ class HiDeMOELoraLinear(nn.Linear, HiDeMOELoraLayer):
             x = x.to(self.lora_A[self.active_adapter].loraA[0].weight.dtype)
 
             if self.training:
-                lora_a_output = self.lora_A[self.active_adapter].loraA[self.cur_task](self.lora_dropout[self.active_adapter](x))
-                lora_b_output = self.lora_B[self.active_adapter].loraB[self.cur_task](lora_a_output)
+                lora_a_output = self.lora_A[self.active_adapter](self.lora_dropout[self.active_adapter](x))
+                lora_b_output = self.lora_B[self.active_adapter](lora_a_output)
                 result += lora_b_output * self.scaling[self.active_adapter]
             else:
                 if int(self.layer) != 31:
-                    lora_a_output = self.lora_A[self.active_adapter](self.lora_dropout[self.active_adapter](x))
-                    lora_b_output = self.lora_B[self.active_adapter](lora_a_output)
-                    result += lora_b_output * self.scaling[self.active_adapter]
+                    # Forward through HiDeMOELinearA.forward() (Would call loraA[0] for variant A)
+                    # Then use expert_weight to weight the output of loraB
+                    if getattr(self, "variant", "standard") == "A":
+                        lora_a_output = self.lora_A[self.active_adapter](self.lora_dropout[self.active_adapter](x))
+                        for i in range(len(self.expert_weight)):
+                            result += (
+                                self.lora_B[self.active_adapter].loraB[i](lora_a_output)
+                                * self.scaling[self.active_adapter]
+                                * self.expert_weight[i]
+                            )
+                    # Variant 'AB' would always call loraA[0] and loraB[0] by default in forward() pass
+                    # Variant 'standard' work is unchanged
+                    else:
+                        lora_a_output = self.lora_A[self.active_adapter](self.lora_dropout[self.active_adapter](x))
+                        lora_b_output = self.lora_B[self.active_adapter](lora_a_output)
+                        result += lora_b_output * self.scaling[self.active_adapter]
                 else:
                     for i in range(len(self.expert_weight)):
                         result += ( # lora process

@@ -219,13 +219,14 @@ class LlavaMetaForCausalLM(ABC):
                 'q_proj', 'k_proj', 'v_proj', 'o_proj',  # self_attn 
                 'gate_proj', 'up_proj', 'down_proj'      # mlp 
             ]
-            for proj_name in proj_names:
-                if proj_name in ['q_proj', 'k_proj', 'v_proj', 'o_proj']:
-                    proj_layer = getattr(self.model.layers[-1].self_attn, proj_name)
-                else:
-                    proj_layer = getattr(self.model.layers[-1].mlp, proj_name)
+            for layer in self.model.layers:
+                for proj_name in proj_names:
+                    if proj_name in ['q_proj', 'k_proj', 'v_proj', 'o_proj']:
+                        proj_layer = getattr(layer.self_attn, proj_name)
+                    else:
+                        proj_layer = getattr(layer.mlp, proj_name)
 
-                proj_layer.expert_weight = compute_expert_weight
+                    proj_layer.expert_weight = compute_expert_weight
                 # print(proj_layer.expert_weight)
 
 
