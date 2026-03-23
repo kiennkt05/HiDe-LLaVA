@@ -8,17 +8,17 @@ MODEL_VERSION="vicuna-7b-v1.5"
 # MODEL_VERSION="Llama-2-7b-chat-hf"
 ################## LLaMA-2 ##################
 
-deepspeed --include localhost:0,1,2,3 --master_port 29601 llava/train/train_mem_MOE.py \
+deepspeed --master_port 29601 llava/train/train_mem_MOE.py \
     --deepspeed ./scripts/zero2.json \
     --lora_enable True --lora_r 48 --lora_alpha 96 --mm_projector_lr 2e-5 \
     --expert_num 6 \
-    --model_name_or_path /your_path/llava-v1.5-7b \
-    --previous_task_model_path /your_path/HiDe/Task2_llava_lora_ours \
+    --model_name_or_path /home/s24gbn1/Documents/kienNguyen/HiDe-LLaVA/llava-7b-v1-5 \
+    --previous_task_model_path ~/Documents/kienNguyen/HiDe-LLaVA//HiDe/Task2_llava_lora_ours \
     --version $PROMPT_VERSION \
-    --data_path /your_path/VizWiz-caption/train.json \
-    --image_folder /your_path/datasets \
-    --vision_tower /your_path/clip-vit-large-patch14-336 \
-    --text_tower /your_path/clip-vit-large-patch14-336 \
+    --data_path /home/s24gbn1/Documents/kienNguyen/HiDe-LLaVA/UCIT/instructions/VizWiz/train.json \
+    --image_folder /home/s24gbn1/Documents/kienNguyen/HiDe-LLaVA/UCIT/datasets \
+    --vision_tower /home/s24gbn1/Documents/kienNguyen/HiDe-LLaVA/clip-vit-large-patch14-336 \
+    --text_tower /home/s24gbn1/Documents/kienNguyen/HiDe-LLaVA/clip-vit-large-patch14-336 \
     --cur_task 2 \
     --mm_projector_type mlp2x_gelu \
     --mm_vision_select_layer -2 \
@@ -27,11 +27,11 @@ deepspeed --include localhost:0,1,2,3 --master_port 29601 llava/train/train_mem_
     --image_aspect_ratio pad \
     --group_by_modality_length True \
     --bf16 True \
-    --output_dir /your_path/HiDe/Task3_llava_lora_ours \
+    --output_dir /home/s24gbn1/Documents/kienNguyen/HiDe-LLaVA/HiDe/Task3_llava_lora_ours \
     --num_train_epochs 1 \
-    --per_device_train_batch_size 24 \
+    --per_device_train_batch_size 2 \
     --per_device_eval_batch_size 16 \
-    --gradient_accumulation_steps 1 \
+    --gradient_accumulation_steps 12 \
     --evaluation_strategy "no" \
     --save_strategy "epoch" \
     --learning_rate 2e-4 \

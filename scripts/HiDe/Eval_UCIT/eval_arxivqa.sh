@@ -25,10 +25,10 @@ RESULT_DIR="./results/UCIT/each_dataset/ArxivQA"
 # for IDX in $(seq 0 $((CHUNKS-1))); do
 CUDA_VISIBLE_DEVICES=$GPU python -m llava.eval.model_answer \
     --model-path $MODELPATH \
-    --model-base /your_path/llava-v1.5-7b \
-    --question-file /your_path/ArxivQA/test_3000.json \
-    --image-folder /your_path/datasets \
-    --text-tower /your_path/clip-vit-large-patch14-336 \
+    --model-base /home/s24gbn1/Documents/kienNguyen/HiDe-LLaVA/llava-7b-v1-5 \
+    --question-file /home/s24gbn1/Documents/kienNguyen/HiDe-LLaVA/UCIT/instructions/ArxivQA/test_3000.json \
+    --image-folder /home/s24gbn1/Documents/kienNguyen/HiDe-LLaVA/UCIT/datasets \
+    --text-tower /home/s24gbn1/Documents/kienNguyen/HiDe-LLaVA/clip-vit-large-patch14-336 \
     --answers-file $RESULT_DIR/$STAGE/${CHUNKS}_${IDX}.jsonl \
     --num-chunks $CHUNKS \
     --chunk-idx $IDX \
@@ -49,6 +49,6 @@ for IDX in $(seq 0 $((CHUNKS-1))); do
 done
 
 python -m llava.eval.eval_deepseek_r1 \
-    --annotation-file /your_path/ArxivQA/test_3000.json \
+    --annotation-file /home/s24gbn1/Documents/kienNguyen/HiDe-LLaVA/UCIT/instructions/ArxivQA/test_3000.json \
     --result-file $output_file \
     --output-dir $RESULT_DIR/$STAGE \
