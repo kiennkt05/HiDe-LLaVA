@@ -106,6 +106,10 @@ class TrainingArguments(transformers.TrainingArguments):
     lora_dropout: float = 0.05
     lora_weight_path: str = ""
     lora_bias: str = "none"
+    variant: str = field(
+        default="standard",
+        metadata={"help": "Variant for LoRA layer training: ['standard', 'AB', 'A']"}
+    )
     mm_projector_lr: Optional[float] = None
     group_by_modality_length: bool = field(default=False)
 
@@ -827,6 +831,7 @@ def train():
         if 'mpt' in model_args.model_name_or_path:
             config = transformers.AutoConfig.from_pretrained(model_args.model_name_or_path, trust_remote_code=True)
             config.attn_config['attn_impl'] = training_args.mpt_attn_impl
+            config.mm_vision_tower = model_args.vision_tower
             model = LlavaMPTForCausalLM.from_pretrained(
                 model_args.model_name_or_path,
                 config=config,
@@ -837,6 +842,7 @@ def train():
             model = LlavaLlamaForCausalLM.from_pretrained(
                 model_args.model_name_or_path,
                 cache_dir=training_args.cache_dir,
+                mm_vision_tower=model_args.vision_tower,
                 **bnb_model_from_pretrained_args,
             )
     else:

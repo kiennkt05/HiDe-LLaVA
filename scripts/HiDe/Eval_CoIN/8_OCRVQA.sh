@@ -23,10 +23,10 @@ RESULT_DIR="./results/CoIN/each_dataset/OCRVQA"
 for IDX in $(seq 0 $((CHUNKS-1))); do
     CUDA_VISIBLE_DEVICES=${GPULIST[$IDX]} python -m llava.eval.CoIN.model_others \
         --model-path $MODELPATH \
-        --model-base /your_path/llava-v1.5-7b \
+        --model-base /home/s24gbn1/Documents/kienNguyen/HiDe-LLaVA/llava-7b-v1-5 \
         --question-file /your_path/OCRVQA/test.json \
-        --image-folder /your_path/datasets \
-        --text-tower /your_path/clip-vit-large-patch14-336 \
+        --image-folder /home/s24gbn1/Documents/kienNguyen/HiDe-LLaVA/UCIT/datasets \
+        --text-tower /home/s24gbn1/Documents/kienNguyen/HiDe-LLaVA/clip-vit-large-patch14-336 \
         --answers-file $RESULT_DIR/$STAGE/${CHUNKS}_${IDX}.jsonl \
         --num-chunks $CHUNKS \
         --chunk-idx $IDX \
