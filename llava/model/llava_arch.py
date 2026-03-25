@@ -215,6 +215,13 @@ class LlavaMetaForCausalLM(ABC):
             compute_expert_weight = sim_softmax.tolist()
             # print(compute_expert_weight)
 
+            import os
+            import json
+            results_final_dir = os.environ.get("RESULTS_FINAL_DIR", "results")
+            os.makedirs(results_final_dir, exist_ok=True)
+            with open(os.path.join(results_final_dir, "expert_weight.jsonl"), "a") as f:
+                f.write(json.dumps(compute_expert_weight) + "\n")
+
             proj_names = [
                 'q_proj', 'k_proj', 'v_proj', 'o_proj',  # self_attn 
                 'gate_proj', 'up_proj', 'down_proj'      # mlp 
