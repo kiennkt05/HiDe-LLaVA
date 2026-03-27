@@ -14,7 +14,7 @@ deepspeed --master_port 29601 llava/train/train_mem_MOE.py \
     --lora_enable True --lora_r 48 --lora_alpha 96 --mm_projector_lr 2e-5 \
     --expert_num 6 \
     --model_name_or_path /home/s24gbn1/Documents/kienNguyen/HiDe-LLaVA/llava-7b-v1-5 \
-    --previous_task_model_path ~/Documents/kienNguyen/HiDe-LLaVA//HiDe/Task5_llava_lora_ours \
+    --previous_task_model_path ~/Documents/kienNguyen/HiDe-LLaVA//HiDe/a_Task5_llava_lora_ours \
     --version $PROMPT_VERSION \
     --data_path /home/s24gbn1/Documents/kienNguyen/HiDe-LLaVA/UCIT/instructions/Flickr30k/train_brief_4w.json \
     --image_folder /home/s24gbn1/Documents/kienNguyen/HiDe-LLaVA/UCIT/datasets \
