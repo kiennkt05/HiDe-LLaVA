@@ -30,9 +30,9 @@ deepspeed --master_port 29601 llava/train/train_mem_MOE.py \
     --bf16 True \
     --output_dir /home/s24gbn1/Documents/kienNguyen/HiDe-LLaVA/HiDe/a_Task2_llava_lora_ours \
     --num_train_epochs 1 \
-    --per_device_train_batch_size 2 \
+    --per_device_train_batch_size 8 \
     --per_device_eval_batch_size 16 \
-    --gradient_accumulation_steps 12 \
+    --gradient_accumulation_steps 4 \
     --evaluation_strategy "no" \
     --save_strategy "epoch" \
     --learning_rate 2e-4 \
