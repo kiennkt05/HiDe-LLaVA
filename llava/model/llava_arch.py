@@ -20,6 +20,12 @@ import torch.nn as nn
 import numpy as np
 import torch.nn.functional as F
 import inspect
+import sys
+
+try:
+    from HiDe.peft.utils.spectral_utils import apply_spectral_norm
+except ImportError:
+    from peft.utils.spectral_utils import apply_spectral_norm
 
 from .multimodal_encoder.builder import build_vision_tower, build_text_tower
 from .multimodal_projector.builder import build_vision_projector
@@ -178,10 +184,14 @@ class LlavaMetaForCausalLM(ABC):
         # text_guide_features: bs, 768
         text_guide_features = text_tower(clip_text_inputs)
 
-        if self.training:
+        # --- ÁP DỤNG SDP CHO ĐẶC TRƯNG ANCHOR/ROUTER ---
+        clean_image_guide_features = apply_spectral_norm(image_guide_features)
+        clean_text_guide_features = apply_spectral_norm(text_guide_features)
 
-            current_image_features = image_guide_features  # [batch_size, feature_dim]
-            current_text_features = text_guide_features  # [batch_size, feature_dim]
+        if self.training:
+            # LƯU Ý: Lấy bản "clean" để cập nhật Anchor
+            current_image_features = clean_image_guide_features  # [batch_size, feature_dim]
+            current_text_features = clean_text_guide_features  # [batch_size, feature_dim]
             task_id = self.cur_task
 
             image_sum = self.image_anchors[task_id] * self.image_boundary[task_id] + current_image_features.sum(dim=0)
@@ -195,11 +205,13 @@ class LlavaMetaForCausalLM(ABC):
         else:
             image_sim = []
             text_sim = []
+            
+            # LƯU Ý: So sánh Cosine Similarity bằng bản "clean"
             for image_anchor in self.image_anchors:
-                image_sims = F.cosine_similarity(image_guide_features.unsqueeze(1), image_anchor, dim=2)
+                image_sims = F.cosine_similarity(clean_image_guide_features.unsqueeze(1), image_anchor, dim=2)
                 image_sim.append(image_sims.max().item())
             for text_anchor in self.text_anchors:
-                text_sims = F.cosine_similarity(text_guide_features.unsqueeze(1), text_anchor, dim=2)
+                text_sims = F.cosine_similarity(clean_text_guide_features.unsqueeze(1), text_anchor, dim=2)
                 text_sim.append(text_sims.max().item())
 
             image_sim = np.array(image_sim[:self.expert_num]) 
@@ -208,12 +220,9 @@ class LlavaMetaForCausalLM(ABC):
             sim = (image_sim + text_sim) / 2
 
             sim_tensor = torch.tensor(sim, dtype=torch.float32)
+            sim_softmax = F.softmax(sim_tensor / 0.1, dim=-1) # Đã thêm dim=-1 để tránh Warning
 
-            sim_softmax = F.softmax(sim_tensor / 0.1)
-
-            # compute_expert_weight = torch.sigmoid(shifted_conf).tolist()
             compute_expert_weight = sim_softmax.tolist()
-            # print(compute_expert_weight)
 
             proj_names = [
                 'q_proj', 'k_proj', 'v_proj', 'o_proj',  # self_attn 
@@ -227,7 +236,6 @@ class LlavaMetaForCausalLM(ABC):
                         proj_layer = getattr(layer.mlp, proj_name)
 
                     proj_layer.expert_weight = compute_expert_weight
-                # print(proj_layer.expert_weight)
 
 
         # TODO: image start / end is not implemented here to support pretraining.
