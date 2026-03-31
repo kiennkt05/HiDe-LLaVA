@@ -35,10 +35,9 @@ from .lora import (
 
 from ..import_utils import is_bnb_4bit_available, is_bnb_available
 
-from ..utils.spectral_utils import apply_spectral_norm
-
 if is_bnb_available():
     import bitsandbytes as bnb
+
 @dataclass
 class HiDeMOELoraConfig(LoraConfig):
     """
@@ -406,39 +405,37 @@ class HiDeMOELoraLinear(nn.Linear, HiDeMOELoraLayer):
                 self.unmerge()
             result = F.linear(x, transpose(self.weight, self.fan_in_fan_out), bias=self.bias)
         elif self.r[self.active_adapter] > 0:   # general lora process
-            
-            # 1. NHÁNH FROZEN BASE: Mạng pre-trained vẫn nhận input nguyên bản để bảo toàn kiến thức
             result = F.linear(x, transpose(self.weight, self.fan_in_fan_out), bias=self.bias)
 
-            # 2. NHÁNH LORA (Áp dụng SDP): Làm sạch x thành x_clean trước khi cho LoRA học
-            x_clean = apply_spectral_norm(x)
-            x_lora = x_clean.to(self.lora_A[self.active_adapter].loraA[0].weight.dtype)
+            x = x.to(self.lora_A[self.active_adapter].loraA[0].weight.dtype)
 
             if self.training:
-                lora_a_output = self.lora_A[self.active_adapter](self.lora_dropout[self.active_adapter](x_lora))
+                lora_a_output = self.lora_A[self.active_adapter](self.lora_dropout[self.active_adapter](x))
                 lora_b_output = self.lora_B[self.active_adapter](lora_a_output)
                 result += lora_b_output * self.scaling[self.active_adapter]
             else:
                 if int(self.layer) != 31:
-                    # Lớp dưới (Task-general)
+                    # Forward through HiDeMOELinearA.forward() (Would call loraA[0] for variant A)
+                    # Then use expert_weight to weight the output of loraB
                     if getattr(self, "variant", "standard") == "A":
-                        lora_a_output = self.lora_A[self.active_adapter](self.lora_dropout[self.active_adapter](x_lora))
+                        lora_a_output = self.lora_A[self.active_adapter](self.lora_dropout[self.active_adapter](x))
                         for i in range(len(self.expert_weight)):
                             result += (
                                 self.lora_B[self.active_adapter].loraB[i](lora_a_output)
                                 * self.scaling[self.active_adapter]
                                 * self.expert_weight[i]
                             )
+                    # Variant 'AB' would always call loraA[0] and loraB[0] by default in forward() pass
+                    # Variant 'standard' work is unchanged
                     else:
-                        lora_a_output = self.lora_A[self.active_adapter](self.lora_dropout[self.active_adapter](x_lora))
+                        lora_a_output = self.lora_A[self.active_adapter](self.lora_dropout[self.active_adapter](x))
                         lora_b_output = self.lora_B[self.active_adapter](lora_a_output)
                         result += lora_b_output * self.scaling[self.active_adapter]
                 else:
-                    # Lớp Top (Task-specific Router)
                     for i in range(len(self.expert_weight)):
                         result += ( # lora process
                             self.lora_B[self.active_adapter].loraB[i](
-                                self.lora_A[self.active_adapter].loraA[i](self.lora_dropout[self.active_adapter](x_lora)),
+                                self.lora_A[self.active_adapter].loraA[i](self.lora_dropout[self.active_adapter](x)),
                             )
                             * self.scaling[self.active_adapter]
                             * self.expert_weight[i]
