@@ -414,7 +414,16 @@ class HiDeMOELoraLinear(nn.Linear, HiDeMOELoraLayer):
                 lora_b_output = self.lora_B[self.active_adapter](lora_a_output)
                 result += lora_b_output * self.scaling[self.active_adapter]
             else:
-                if int(self.layer) != 31:
+                # Full A variant - share a single loraA across all tasks
+                if getattr(self, "variant", "standard") == "fA":
+                    lora_a_output = self.lora_A[self.active_adapter](self.lora_dropout[self.active_adapter](x))
+                    for i in range(len(self.expert_weight)):
+                        result += (
+                            self.lora_B[self.active_adapter].loraB[i](lora_a_output)
+                            * self.scaling[self.active_adapter]
+                            * self.expert_weight[i]
+                        )
+                elif int(self.layer) != 31:
                     # Forward through HiDeMOELinearA.forward() (Would call loraA[0] for variant A)
                     # Then use expert_weight to weight the output of loraB
                     if getattr(self, "variant", "standard") == "A":
@@ -475,6 +484,9 @@ class HiDeMOELinearA(nn.Module):
         '''input x is a vector, return output is a list'''
         if self.training:
             assert 0 <= self.cur_task < self.expert_num, "Invalid current_task value"
+            if getattr(self, "variant", "standard") == "fA":
+                output = self.loraA[0](x)
+                return output
             if getattr(self, "variant", "standard") in ["A", "AB"] and int(self.layer) != 31:
                 output = self.loraA[0](x)
                 return output
@@ -482,7 +494,15 @@ class HiDeMOELinearA(nn.Module):
             return output
         else:
             merge_weight = 1.0
-            if int(self.layer) != 31:
+            if getattr(self, "variant", "standard") == "fA":
+                temp_mlp = nn.Linear(self.in_features, self.r, bias=False).to(x.device)
+                fused_weight = torch.zeros((self.r, self.in_features), device=x.device)
+                fused_weight += self.loraA[0].weight
+                with torch.no_grad(): 
+                    temp_mlp.weight.copy_(fused_weight)
+                output = temp_mlp(x)
+                return output
+            elif int(self.layer) != 31:
                 temp_mlp = nn.Linear(self.in_features, self.r, bias=False).to(x.device)
                 
                 fused_weight = torch.zeros((self.r, self.in_features), device=x.device)
