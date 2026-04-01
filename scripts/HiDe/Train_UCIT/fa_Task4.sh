@@ -10,17 +10,17 @@ MODEL_VERSION="vicuna-7b-v1.5"
 
 deepspeed --master_port 29601 llava/train/train_mem_MOE.py \
     --deepspeed ./scripts/zero2.json \
-    --variant AB \
+    --variant fA \
     --lora_enable True --lora_r 48 --lora_alpha 96 --mm_projector_lr 2e-5 \
     --expert_num 6 \
     --model_name_or_path /home/s24gbn1/Documents/kienNguyen/HiDe-LLaVA/llava-7b-v1-5 \
-    --pretrain_mm_mlp_adapter /home/s24gbn1/Documents/kienNguyen/HiDe-LLaVA/llava-7b-v1-5/mm_projector.bin \
+    --previous_task_model_path ~/Documents/kienNguyen/HiDe-LLaVA//HiDe/fa_Task3_llava_lora_ours \
     --version $PROMPT_VERSION \
-    --data_path /home/s24gbn1/Documents/kienNguyen/HiDe-LLaVA/UCIT/instructions/ImageNet-R/train.json \
+    --data_path /home/s24gbn1/Documents/kienNguyen/HiDe-LLaVA/UCIT/instructions/IconQA/train.json \
     --image_folder /home/s24gbn1/Documents/kienNguyen/HiDe-LLaVA/UCIT/datasets \
     --vision_tower /home/s24gbn1/Documents/kienNguyen/HiDe-LLaVA/clip-vit-large-patch14-336 \
     --text_tower /home/s24gbn1/Documents/kienNguyen/HiDe-LLaVA/clip-vit-large-patch14-336 \
-    --cur_task 0 \
+    --cur_task 3 \
     --mm_projector_type mlp2x_gelu \
     --mm_vision_select_layer -2 \
     --mm_use_im_start_end False \
@@ -28,11 +28,11 @@ deepspeed --master_port 29601 llava/train/train_mem_MOE.py \
     --image_aspect_ratio pad \
     --group_by_modality_length True \
     --bf16 True \
-    --output_dir /home/s24gbn1/Documents/kienNguyen/HiDe-LLaVA/HiDe/ab_Task1_llava_lora_ours \
+    --output_dir /home/s24gbn1/Documents/kienNguyen/HiDe-LLaVA/HiDe/fa_Task4_llava_lora_ours \
     --num_train_epochs 1 \
-    --per_device_train_batch_size 2 \
+    --per_device_train_batch_size 8 \
     --per_device_eval_batch_size 16 \
-    --gradient_accumulation_steps 12 \
+    --gradient_accumulation_steps 4 \
     --evaluation_strategy "no" \
     --save_strategy "epoch" \
     --learning_rate 2e-4 \
