@@ -5,11 +5,11 @@ import json
 from tqdm import tqdm
 import shortuuid
 
-from ETrain.utils.LLaVA.constants import IMAGE_TOKEN_INDEX, DEFAULT_IMAGE_TOKEN, DEFAULT_IM_START_TOKEN, DEFAULT_IM_END_TOKEN
-from ETrain.utils.LLaVA.conversation import conv_templates, SeparatorStyle
-from ETrain.Models.LLaVA.builder import load_pretrained_model
-from ETrain.utils.LLaVA.utils import disable_torch_init
-from ETrain.utils.LLaVA.mm_utils import tokenizer_image_token, process_images, get_model_name_from_path
+from llava.constants import IMAGE_TOKEN_INDEX, DEFAULT_IMAGE_TOKEN, DEFAULT_IM_START_TOKEN, DEFAULT_IM_END_TOKEN
+from llava.conversation import conv_templates, SeparatorStyle
+from llava.model.builder import load_pretrained_model
+from llava.utils import disable_torch_init
+from llava.mm_utils import tokenizer_image_token, process_images, get_model_name_from_path
 from torch.utils.data import Dataset, DataLoader
 
 from PIL import Image
@@ -199,7 +199,9 @@ def eval_model(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--model-path", type=str, default="facebook/opt-350m")
-    parser.add_argument("--model-base", type=str, default=None)
+    parser.add_argument("--model-base", type=str, default="~/Documents/kienNguyen/HiDe-LLaVA/llava-7b-v1-5")
+    parser.add_argument("--base_dir", type=str, default="~/Documents/kienNguyen/HiDe-LLaVA/HiDe_1")
+    parser.add_argument("--run_type", type=str, default="Task")
     parser.add_argument("--image-folder", type=str, default="")
     parser.add_argument("--question-file", type=str, default="tables/question.jsonl")
     parser.add_argument("--answers-file", type=str, default="answer.jsonl")
@@ -212,669 +214,55 @@ if __name__ == "__main__":
     parser.add_argument("--max_new_tokens", type=int, default=128)
     args = parser.parse_args()
 
-    args.question_file="/mnt/ShareDB_6TB/datasets/MLLM_CL/ACL_instructions/ArxivQA/test_3000.json"
-    args.model_path='/mnt/haiyangguo/mywork/CL-MLLM/CoIN/checkpoints/LLaVA/CoIN/ind-6task-3e-4/Task2_llava_lora_ours'
+    BASE_MODEL = os.path.expanduser(args.model_base) if args.model_base else None
 
-    activation_1 = eval_model(args)
-    with open('activation_1.pkl', 'wb') as f:
-        pickle.dump(activation_1, f)
+    configs = [
+        {"question_file": "~/Documents/kienNguyen/HiDe-LLaVA/UCIT/instructions/ImageNet-R/test_3000.json",
+         "model_path": f"{args.base_dir}/Task1_llava_lora_ours"},
+        {"question_file": "~/Documents/kienNguyen/HiDe-LLaVA/UCIT/instructions/ArxivQA/test_3000.json",
+         "model_path": f"{args.base_dir}/{args.run_type}2_llava_lora_ours"},
+        {"question_file": "~/Documents/kienNguyen/HiDe-LLaVA/UCIT/instructions/VizWiz/test_3000.json",
+         "model_path": f"{args.base_dir}/{args.run_type}3_llava_lora_ours"},
+        {"question_file": "~/Documents/kienNguyen/HiDe-LLaVA/UCIT/instructions/IconQA/test_3000.json",
+         "model_path": f"{args.base_dir}/{args.run_type}4_llava_lora_ours"},
+        {"question_file": "~/Documents/kienNguyen/HiDe-LLaVA/UCIT/instructions/CLEVR/test_3000.json",
+         "model_path": f"{args.base_dir}/{args.run_type}5_llava_lora_ours"},
+        {"question_file": "~/Documents/kienNguyen/HiDe-LLaVA/UCIT/instructions/Flickr30k/test_3000.json",
+         "model_path": f"{args.base_dir}/{args.run_type}6_llava_lora_ours"},
+    ]
 
-    args.question_file="/mnt/ShareDB_6TB/datasets/MLLM_CL/ACL_instructions/IconQA/test_3000.json"
-    args.model_path='/mnt/haiyangguo/mywork/CL-MLLM/CoIN/checkpoints/LLaVA/CoIN/ind-6task-3e-4/Task4_llava_lora_ours'
+    for idx, config in enumerate(configs, start=1):
+        args.question_file = config["question_file"]
+        args.model_path = config["model_path"]
+        args.model_base = BASE_MODEL
+        
+        act = eval_model(args)
+        with open(f'activation_{idx}.pkl', 'wb') as f:
+            pickle.dump(act, f)
 
-    activation_2 = eval_model(args)
-    with open('activation_2.pkl', 'wb') as f:
-        pickle.dump(activation_2, f)
+    activations = []
+    for idx in range(1, len(configs) + 1):
+        with open(f'activation_{idx}.pkl', 'rb') as f:
+            activations.append(pickle.load(f))
 
-    args.question_file="/mnt/ShareDB_6TB/datasets/MLLM_CL/ACL_instructions/ImageNet-R/test_3000.json"
-    args.model_path='/mnt/haiyangguo/mywork/CL-MLLM/CoIN/checkpoints/LLaVA/CoIN/ind-6task-3e-4/Task1_llava_lora_ours'
-
-    activation_3 = eval_model(args)
-    with open('activation_3.pkl', 'wb') as f:
-        pickle.dump(activation_3, f)
-
-    args.question_file="/mnt/ShareDB_6TB/datasets/MLLM_CL/ACL_instructions/VizWiz-caption/test_3000.json"
-    args.model_path='/mnt/haiyangguo/mywork/CL-MLLM/CoIN/checkpoints/LLaVA/CoIN/ind-6task-3e-4/Task6_llava_lora_ours'
-
-    activation_4 = eval_model(args)
-    with open('activation_4.pkl', 'wb') as f:
-        pickle.dump(activation_4, f)
-
-    args.question_file="/mnt/ShareDB_6TB/datasets/MLLM_CL/ACL_instructions/CLEVR-Math/test_3000.json"
-    args.model_path='/mnt/haiyangguo/mywork/CL-MLLM/CoIN/checkpoints/LLaVA/CoIN/ind-6task-3e-4/Task5_llava_lora_ours'
-
-    activation_5 = eval_model(args)
-    with open('activation_5.pkl', 'wb') as f:
-        pickle.dump(activation_5, f)
-
-    # args.question_file="/mnt/ShareDB_6TB/datasets/MLLM_CL/ACL_instructions/FigureQA/test_3000.json"
-    # args.model_path='/mnt/haiyangguo/mywork/CL-MLLM/CoIN/checkpoints/LLaVA/CoIN/ind-8task/Task6_llava_lora_ours'
-
-    # activation_6 = eval_model(args)
-    # with open('activation_6.pkl', 'wb') as f:
-    #     pickle.dump(activation_6, f)
-
-    args.question_file="/mnt/ShareDB_6TB/datasets/MLLM_CL/ACL_instructions/Flickr30k-cap/test_3000.json"
-    args.model_path='/mnt/haiyangguo/mywork/CL-MLLM/CoIN/checkpoints/LLaVA/CoIN/ind-6task-3e-4/Task3_llava_lora_ours'
-
-    activation_6 = eval_model(args)
-    with open('activation_6.pkl', 'wb') as f:
-        pickle.dump(activation_6, f)
-
-    # args.question_file="/mnt/ShareDB_6TB/datasets/MLLM_CL/ACL_instructions/super-CLEVR/test_3000.json"
-    # args.model_path='/mnt/haiyangguo/mywork/CL-MLLM/CoIN/checkpoints/LLaVA/CoIN/ind-8task/Task8_llava_lora_ours'
-
-    # activation_8 = eval_model(args)
-    # with open('activation_8.pkl', 'wb') as f:
-    #     pickle.dump(activation_8, f)
-
-
-
-    with open('activation_1.pkl', 'rb') as f:
-        activation_1 = pickle.load(f)
-    with open('activation_2.pkl', 'rb') as f:
-        activation_2 = pickle.load(f)
-    with open('activation_3.pkl', 'rb') as f:
-        activation_3 = pickle.load(f)
-    with open('activation_4.pkl', 'rb') as f:
-        activation_4 = pickle.load(f)
-    with open('activation_5.pkl', 'rb') as f:
-        activation_5 = pickle.load(f)
-    with open('activation_6.pkl', 'rb') as f:
-        activation_6 = pickle.load(f)
-    # with open('activation_7.pkl', 'rb') as f:
-    #     activation_7 = pickle.load(f)
-    # with open('activation_8.pkl', 'rb') as f:
-    #     activation_8 = pickle.load(f)
-
-    cka_sim_linear = []
-    cka_sim_kernel = []
-
-    kernel_CKA_matrix = np.zeros((6, 6))
-    for i in range(6):
-        for j in range(6):
-            if i <= j:
-                activation_i = locals()[f'activation_{i+1}']
-                activation_j = locals()[f'activation_{j+1}']
-                
-                kernel_result = kernel_CKA(activation_i['layer_0_final_output'], activation_j['layer_0_final_output'])
-                
-                kernel_CKA_matrix[i, j] = np.round(kernel_result, 4)
-                kernel_CKA_matrix[j, i] = kernel_CKA_matrix[i, j]  
-    print('layer 0:')
-    print(kernel_CKA_matrix)
-    
-    plt.figure(figsize=(10, 8), dpi=500)  
-    sns.heatmap(kernel_CKA_matrix, annot=False, fmt=".4f", cmap="YlGnBu", vmin=0.0, vmax=1.0)  
-    plt.savefig('kernel-CKA-layer0.png') 
-
-    kernel_CKA_matrix = np.zeros((6, 6))
-    for i in range(6):
-        for j in range(6):
-            if i <= j:
-                activation_i = locals()[f'activation_{i+1}']
-                activation_j = locals()[f'activation_{j+1}']
-                
-                kernel_result = kernel_CKA(activation_i['layer_1_final_output'], activation_j['layer_1_final_output'])
-                
-                kernel_CKA_matrix[i, j] = np.round(kernel_result, 4)
-                kernel_CKA_matrix[j, i] = kernel_CKA_matrix[i, j]  
-    print('layer 1:')
-    print(kernel_CKA_matrix)
-    
-    plt.figure(figsize=(10, 8), dpi=500)  
-    sns.heatmap(kernel_CKA_matrix, annot=False, fmt=".4f", cmap="YlGnBu", vmin=0.0, vmax=1.0)  
-    plt.savefig('kernel-CKA-layer1.png') 
-
-    kernel_CKA_matrix = np.zeros((6, 6))
-    for i in range(6):
-        for j in range(6):
-            if i <= j:
-                activation_i = locals()[f'activation_{i+1}']
-                activation_j = locals()[f'activation_{j+1}']
-                
-                kernel_result = kernel_CKA(activation_i['layer_2_final_output'], activation_j['layer_2_final_output'])
-                
-                kernel_CKA_matrix[i, j] = np.round(kernel_result, 4)
-                kernel_CKA_matrix[j, i] = kernel_CKA_matrix[i, j]  
-    print('layer 2:')
-    print(kernel_CKA_matrix)
-    
-    plt.figure(figsize=(10, 8), dpi=500)  
-    sns.heatmap(kernel_CKA_matrix, annot=False, fmt=".4f", cmap="YlGnBu", vmin=0.0, vmax=1.0)  
-    plt.savefig('kernel-CKA-layer2.png') 
-
-    kernel_CKA_matrix = np.zeros((6, 6))
-    for i in range(6):
-        for j in range(6):
-            if i <= j:
-                activation_i = locals()[f'activation_{i+1}']
-                activation_j = locals()[f'activation_{j+1}']
-                
-                kernel_result = kernel_CKA(activation_i['layer_3_final_output'], activation_j['layer_3_final_output'])
-                
-                kernel_CKA_matrix[i, j] = np.round(kernel_result, 4)
-                kernel_CKA_matrix[j, i] = kernel_CKA_matrix[i, j]  
-    print('layer 3:')
-    print(kernel_CKA_matrix)
-    
-    plt.figure(figsize=(10, 8), dpi=500)  
-    sns.heatmap(kernel_CKA_matrix, annot=False, fmt=".4f", cmap="YlGnBu", vmin=0.0, vmax=1.0)  
-    plt.savefig('kernel-CKA-layer3.png') 
-
-    kernel_CKA_matrix = np.zeros((6, 6))
-    for i in range(6):
-        for j in range(6):
-            if i <= j:
-                activation_i = locals()[f'activation_{i+1}']
-                activation_j = locals()[f'activation_{j+1}']
-                
-                kernel_result = kernel_CKA(activation_i['layer_4_final_output'], activation_j['layer_4_final_output'])
-                
-                kernel_CKA_matrix[i, j] = np.round(kernel_result, 4)
-                kernel_CKA_matrix[j, i] = kernel_CKA_matrix[i, j]  
-    print('layer 4:')
-    print(kernel_CKA_matrix)
-    
-    plt.figure(figsize=(10, 8), dpi=500)  
-    sns.heatmap(kernel_CKA_matrix, annot=False, fmt=".4f", cmap="YlGnBu", vmin=0.0, vmax=1.0)  
-    plt.savefig('kernel-CKA-layer4.png') 
-
-    kernel_CKA_matrix = np.zeros((6, 6))
-    for i in range(6):
-        for j in range(6):
-            if i <= j:
-                activation_i = locals()[f'activation_{i+1}']
-                activation_j = locals()[f'activation_{j+1}']
-                
-                kernel_result = kernel_CKA(activation_i['layer_5_final_output'], activation_j['layer_5_final_output'])
-                
-                kernel_CKA_matrix[i, j] = np.round(kernel_result, 4)
-                kernel_CKA_matrix[j, i] = kernel_CKA_matrix[i, j]  
-    print('layer 5:')
-    print(kernel_CKA_matrix)
-    
-    plt.figure(figsize=(10, 8), dpi=500)  
-    sns.heatmap(kernel_CKA_matrix, annot=False, fmt=".4f", cmap="YlGnBu", vmin=0.0, vmax=1.0)  
-    plt.savefig('kernel-CKA-layer5.png') 
-
-    kernel_CKA_matrix = np.zeros((6, 6))
-    for i in range(6):
-        for j in range(6):
-            if i <= j:
-                activation_i = locals()[f'activation_{i+1}']
-                activation_j = locals()[f'activation_{j+1}']
-                
-                kernel_result = kernel_CKA(activation_i['layer_6_final_output'], activation_j['layer_6_final_output'])
-                
-                kernel_CKA_matrix[i, j] = np.round(kernel_result, 4)
-                kernel_CKA_matrix[j, i] = kernel_CKA_matrix[i, j]  
-    print('layer 6:')
-    print(kernel_CKA_matrix)
-    
-    plt.figure(figsize=(10, 8), dpi=500)  
-    sns.heatmap(kernel_CKA_matrix, annot=False, fmt=".4f", cmap="YlGnBu", vmin=0.0, vmax=1.0)  
-    plt.savefig('kernel-CKA-layer6.png') 
-
-    kernel_CKA_matrix = np.zeros((6, 6))
-    for i in range(6):
-        for j in range(6):
-            if i <= j:
-                activation_i = locals()[f'activation_{i+1}']
-                activation_j = locals()[f'activation_{j+1}']
-                
-                kernel_result = kernel_CKA(activation_i['layer_7_final_output'], activation_j['layer_7_final_output'])
-                
-                kernel_CKA_matrix[i, j] = np.round(kernel_result, 4)
-                kernel_CKA_matrix[j, i] = kernel_CKA_matrix[i, j]  
-    print('layer 7:')
-    print(kernel_CKA_matrix)
-    
-    plt.figure(figsize=(10, 8), dpi=500)  
-    sns.heatmap(kernel_CKA_matrix, annot=False, fmt=".4f", cmap="YlGnBu", vmin=0.0, vmax=1.0)  
-    plt.savefig('kernel-CKA-layer7.png') 
-
-    kernel_CKA_matrix = np.zeros((6, 6))
-    for i in range(6):
-        for j in range(6):
-            if i <= j:
-                activation_i = locals()[f'activation_{i+1}']
-                activation_j = locals()[f'activation_{j+1}']
-                
-                kernel_result = kernel_CKA(activation_i['layer_8_final_output'], activation_j['layer_8_final_output'])
-                
-                kernel_CKA_matrix[i, j] = np.round(kernel_result, 4)
-                kernel_CKA_matrix[j, i] = kernel_CKA_matrix[i, j]  
-    print('layer 8:')
-    print(kernel_CKA_matrix)
-    
-    plt.figure(figsize=(10, 8), dpi=500)  
-    sns.heatmap(kernel_CKA_matrix, annot=False, fmt=".4f", cmap="YlGnBu", vmin=0.0, vmax=1.0)  
-    plt.savefig('kernel-CKA-layer8.png') 
-
-    kernel_CKA_matrix = np.zeros((6, 6))
-    for i in range(6):
-        for j in range(6):
-            if i <= j:
-                activation_i = locals()[f'activation_{i+1}']
-                activation_j = locals()[f'activation_{j+1}']
-                
-                kernel_result = kernel_CKA(activation_i['layer_9_final_output'], activation_j['layer_9_final_output'])
-                
-                kernel_CKA_matrix[i, j] = np.round(kernel_result, 4)
-                kernel_CKA_matrix[j, i] = kernel_CKA_matrix[i, j]  
-    print('layer 9:')
-    print(kernel_CKA_matrix)
-    
-    plt.figure(figsize=(10, 8), dpi=500)  
-    sns.heatmap(kernel_CKA_matrix, annot=False, fmt=".4f", cmap="YlGnBu", vmin=0.0, vmax=1.0)  
-    plt.savefig('kernel-CKA-layer9.png') 
-
-    kernel_CKA_matrix = np.zeros((6, 6))
-    for i in range(6):
-        for j in range(6):
-            if i <= j:
-                activation_i = locals()[f'activation_{i+1}']
-                activation_j = locals()[f'activation_{j+1}']
-                
-                kernel_result = kernel_CKA(activation_i['layer_10_final_output'], activation_j['layer_10_final_output'])
-                
-                kernel_CKA_matrix[i, j] = np.round(kernel_result, 4)
-                kernel_CKA_matrix[j, i] = kernel_CKA_matrix[i, j]  
-    print('layer 10:')
-    print(kernel_CKA_matrix)
-    
-    plt.figure(figsize=(10, 8), dpi=500)  
-    sns.heatmap(kernel_CKA_matrix, annot=False, fmt=".4f", cmap="YlGnBu", vmin=0.0, vmax=1.0)  
-    plt.savefig('kernel-CKA-layer10.png') 
-
-    kernel_CKA_matrix = np.zeros((6, 6))
-    for i in range(6):
-        for j in range(6):
-            if i <= j:
-                activation_i = locals()[f'activation_{i+1}']
-                activation_j = locals()[f'activation_{j+1}']
-                
-                kernel_result = kernel_CKA(activation_i['layer_11_final_output'], activation_j['layer_11_final_output'])
-                
-                kernel_CKA_matrix[i, j] = np.round(kernel_result, 4)
-                kernel_CKA_matrix[j, i] = kernel_CKA_matrix[i, j]  
-    print('layer 11:')
-    print(kernel_CKA_matrix)
-    
-    plt.figure(figsize=(10, 8), dpi=500)  
-    sns.heatmap(kernel_CKA_matrix, annot=False, fmt=".4f", cmap="YlGnBu", vmin=0.0, vmax=1.0)  
-    plt.savefig('kernel-CKA-layer11.png') 
-
-    kernel_CKA_matrix = np.zeros((6, 6))
-    for i in range(6):
-        for j in range(6):
-            if i <= j:
-                activation_i = locals()[f'activation_{i+1}']
-                activation_j = locals()[f'activation_{j+1}']
-                
-                kernel_result = kernel_CKA(activation_i['layer_12_final_output'], activation_j['layer_12_final_output'])
-                
-                kernel_CKA_matrix[i, j] = np.round(kernel_result, 4)
-                kernel_CKA_matrix[j, i] = kernel_CKA_matrix[i, j]  
-    print('layer 12:')
-    print(kernel_CKA_matrix)
-    
-    plt.figure(figsize=(10, 8), dpi=500)  
-    sns.heatmap(kernel_CKA_matrix, annot=False, fmt=".4f", cmap="YlGnBu", vmin=0.0, vmax=1.0)  
-    plt.savefig('kernel-CKA-layer12.png') 
-
-    kernel_CKA_matrix = np.zeros((6, 6))
-    for i in range(6):
-        for j in range(6):
-            if i <= j:
-                activation_i = locals()[f'activation_{i+1}']
-                activation_j = locals()[f'activation_{j+1}']
-                
-                kernel_result = kernel_CKA(activation_i['layer_13_final_output'], activation_j['layer_13_final_output'])
-                
-                kernel_CKA_matrix[i, j] = np.round(kernel_result, 4)
-                kernel_CKA_matrix[j, i] = kernel_CKA_matrix[i, j]  
-    print('layer 13:')
-    print(kernel_CKA_matrix)
-    
-    plt.figure(figsize=(10, 8), dpi=500)  
-    sns.heatmap(kernel_CKA_matrix, annot=False, fmt=".4f", cmap="YlGnBu", vmin=0.0, vmax=1.0)  
-    plt.savefig('kernel-CKA-layer13.png') 
-
-    kernel_CKA_matrix = np.zeros((6, 6))
-    for i in range(6):
-        for j in range(6):
-            if i <= j:
-                activation_i = locals()[f'activation_{i+1}']
-                activation_j = locals()[f'activation_{j+1}']
-                
-                kernel_result = kernel_CKA(activation_i['layer_14_final_output'], activation_j['layer_14_final_output'])
-                
-                kernel_CKA_matrix[i, j] = np.round(kernel_result, 4)
-                kernel_CKA_matrix[j, i] = kernel_CKA_matrix[i, j]  
-    print('layer 14:')
-    print(kernel_CKA_matrix)
-    
-    plt.figure(figsize=(10, 8), dpi=500)  
-    sns.heatmap(kernel_CKA_matrix, annot=False, fmt=".4f", cmap="YlGnBu", vmin=0.0, vmax=1.0)  
-    plt.savefig('kernel-CKA-layer14.png') 
-
-    kernel_CKA_matrix = np.zeros((6, 6))
-    for i in range(6):
-        for j in range(6):
-            if i <= j:
-                activation_i = locals()[f'activation_{i+1}']
-                activation_j = locals()[f'activation_{j+1}']
-                
-                kernel_result = kernel_CKA(activation_i['layer_15_final_output'], activation_j['layer_15_final_output'])
-                
-                kernel_CKA_matrix[i, j] = np.round(kernel_result, 4)
-                kernel_CKA_matrix[j, i] = kernel_CKA_matrix[i, j]  
-
-    print('layer 15:')
-    print(kernel_CKA_matrix)
-    
-    plt.figure(figsize=(10, 8), dpi=500)  
-    sns.heatmap(kernel_CKA_matrix, annot=False, fmt=".4f", cmap="YlGnBu", vmin=0.0, vmax=1.0)  
-    plt.savefig('kernel-CKA-layer15.png') 
-
-    kernel_CKA_matrix = np.zeros((6, 6))
-    for i in range(6):
-        for j in range(6):
-            if i <= j:
-                activation_i = locals()[f'activation_{i+1}']
-                activation_j = locals()[f'activation_{j+1}']
-                
-                kernel_result = kernel_CKA(activation_i['layer_16_final_output'], activation_j['layer_16_final_output'])
-                
-                kernel_CKA_matrix[i, j] = np.round(kernel_result, 4)
-                kernel_CKA_matrix[j, i] = kernel_CKA_matrix[i, j]  
-    print('layer 16:')
-    print(kernel_CKA_matrix)
-    
-    plt.figure(figsize=(10, 8), dpi=500)  
-    sns.heatmap(kernel_CKA_matrix, annot=False, fmt=".4f", cmap="YlGnBu", vmin=0.0, vmax=1.0)  
-    plt.savefig('kernel-CKA-layer16.png') 
-
-    kernel_CKA_matrix = np.zeros((6, 6))
-    for i in range(6):
-        for j in range(6):
-            if i <= j:
-                activation_i = locals()[f'activation_{i+1}']
-                activation_j = locals()[f'activation_{j+1}']
-                
-                kernel_result = kernel_CKA(activation_i['layer_17_final_output'], activation_j['layer_17_final_output'])
-                
-                kernel_CKA_matrix[i, j] = np.round(kernel_result, 4)
-                kernel_CKA_matrix[j, i] = kernel_CKA_matrix[i, j]  
-    print('layer 17:')
-    print(kernel_CKA_matrix)
-    
-    plt.figure(figsize=(10, 8), dpi=500)  
-    sns.heatmap(kernel_CKA_matrix, annot=False, fmt=".4f", cmap="YlGnBu", vmin=0.0, vmax=1.0)  
-    plt.savefig('kernel-CKA-layer17.png') 
-
-    kernel_CKA_matrix = np.zeros((6, 6))
-    for i in range(6):
-        for j in range(6):
-            if i <= j:
-                activation_i = locals()[f'activation_{i+1}']
-                activation_j = locals()[f'activation_{j+1}']
-                
-                kernel_result = kernel_CKA(activation_i['layer_18_final_output'], activation_j['layer_18_final_output'])
-                
-                kernel_CKA_matrix[i, j] = np.round(kernel_result, 4)
-                kernel_CKA_matrix[j, i] = kernel_CKA_matrix[i, j]  
-    print('layer 18:')
-    print(kernel_CKA_matrix)
-    
-    plt.figure(figsize=(10, 8), dpi=500)  
-    sns.heatmap(kernel_CKA_matrix, annot=False, fmt=".4f", cmap="YlGnBu", vmin=0.0, vmax=1.0)  
-    plt.savefig('kernel-CKA-layer18.png') 
-
-    kernel_CKA_matrix = np.zeros((6, 6))
-    for i in range(6):
-        for j in range(6):
-            if i <= j:
-                activation_i = locals()[f'activation_{i+1}']
-                activation_j = locals()[f'activation_{j+1}']
-                
-                kernel_result = kernel_CKA(activation_i['layer_19_final_output'], activation_j['layer_19_final_output'])
-                
-                kernel_CKA_matrix[i, j] = np.round(kernel_result, 4)
-                kernel_CKA_matrix[j, i] = kernel_CKA_matrix[i, j]  
-    print('layer 19:')
-    print(kernel_CKA_matrix)
-    
-    plt.figure(figsize=(10, 8), dpi=500)  
-    sns.heatmap(kernel_CKA_matrix, annot=False, fmt=".4f", cmap="YlGnBu", vmin=0.0, vmax=1.0)  
-    plt.savefig('kernel-CKA-layer19.png') 
-
-    kernel_CKA_matrix = np.zeros((6, 6))
-    for i in range(6):
-        for j in range(6):
-            if i <= j:
-                activation_i = locals()[f'activation_{i+1}']
-                activation_j = locals()[f'activation_{j+1}']
-                
-                kernel_result = kernel_CKA(activation_i['layer_20_final_output'], activation_j['layer_20_final_output'])
-                
-                kernel_CKA_matrix[i, j] = np.round(kernel_result, 4)
-                kernel_CKA_matrix[j, i] = kernel_CKA_matrix[i, j]  
-    print('layer 20:')
-    print(kernel_CKA_matrix)
-    
-    plt.figure(figsize=(10, 8), dpi=500)  
-    sns.heatmap(kernel_CKA_matrix, annot=False, fmt=".4f", cmap="YlGnBu", vmin=0.0, vmax=1.0)  
-    plt.savefig('kernel-CKA-layer20.png') 
-
-    kernel_CKA_matrix = np.zeros((6, 6))
-    for i in range(6):
-        for j in range(6):
-            if i <= j:
-                activation_i = locals()[f'activation_{i+1}']
-                activation_j = locals()[f'activation_{j+1}']
-                
-                kernel_result = kernel_CKA(activation_i['layer_21_final_output'], activation_j['layer_21_final_output'])
-                
-                kernel_CKA_matrix[i, j] = np.round(kernel_result, 4)
-                kernel_CKA_matrix[j, i] = kernel_CKA_matrix[i, j]  
-    print('layer 21:')
-    print(kernel_CKA_matrix)
-    
-    plt.figure(figsize=(10, 8), dpi=500)  
-    sns.heatmap(kernel_CKA_matrix, annot=False, fmt=".4f", cmap="YlGnBu", vmin=0.0, vmax=1.0)  
-    plt.savefig('kernel-CKA-layer21.png') 
-
-    kernel_CKA_matrix = np.zeros((6, 6))
-    for i in range(6):
-        for j in range(6):
-            if i <= j:
-                activation_i = locals()[f'activation_{i+1}']
-                activation_j = locals()[f'activation_{j+1}']
-                
-                kernel_result = kernel_CKA(activation_i['layer_22_final_output'], activation_j['layer_22_final_output'])
-                
-                kernel_CKA_matrix[i, j] = np.round(kernel_result, 4)
-                kernel_CKA_matrix[j, i] = kernel_CKA_matrix[i, j]  
-    print('layer 22:')
-    print(kernel_CKA_matrix)
-    
-    plt.figure(figsize=(10, 8), dpi=500)  
-    sns.heatmap(kernel_CKA_matrix, annot=False, fmt=".4f", cmap="YlGnBu", vmin=0.0, vmax=1.0)  
-    plt.savefig('kernel-CKA-layer22.png') 
-
-    kernel_CKA_matrix = np.zeros((6, 6))
-    for i in range(6):
-        for j in range(6):
-            if i <= j:
-                activation_i = locals()[f'activation_{i+1}']
-                activation_j = locals()[f'activation_{j+1}']
-                
-                kernel_result = kernel_CKA(activation_i['layer_23_final_output'], activation_j['layer_23_final_output'])
-                
-                kernel_CKA_matrix[i, j] = np.round(kernel_result, 4)
-                kernel_CKA_matrix[j, i] = kernel_CKA_matrix[i, j]  
-    print('layer 23:')
-    print(kernel_CKA_matrix)
-    
-    plt.figure(figsize=(10, 8), dpi=500)  
-    sns.heatmap(kernel_CKA_matrix, annot=False, fmt=".4f", cmap="YlGnBu", vmin=0.0, vmax=1.0)  
-    plt.savefig('kernel-CKA-layer23.png') 
-
-    kernel_CKA_matrix = np.zeros((6, 6))
-    for i in range(6):
-        for j in range(6):
-            if i <= j:
-                activation_i = locals()[f'activation_{i+1}']
-                activation_j = locals()[f'activation_{j+1}']
-                
-                kernel_result = kernel_CKA(activation_i['layer_24_final_output'], activation_j['layer_24_final_output'])
-                
-                kernel_CKA_matrix[i, j] = np.round(kernel_result, 4)
-                kernel_CKA_matrix[j, i] = kernel_CKA_matrix[i, j]  
-    print('layer 24:')
-    print(kernel_CKA_matrix)
-    
-    plt.figure(figsize=(10, 8), dpi=500)  
-    sns.heatmap(kernel_CKA_matrix, annot=False, fmt=".4f", cmap="YlGnBu", vmin=0.0, vmax=1.0)  
-    plt.savefig('kernel-CKA-layer24.png') 
-
-    kernel_CKA_matrix = np.zeros((6, 6))
-    for i in range(6):
-        for j in range(6):
-            if i <= j:
-                activation_i = locals()[f'activation_{i+1}']
-                activation_j = locals()[f'activation_{j+1}']
-                
-                kernel_result = kernel_CKA(activation_i['layer_25_final_output'], activation_j['layer_25_final_output'])
-                
-                kernel_CKA_matrix[i, j] = np.round(kernel_result, 4)
-                kernel_CKA_matrix[j, i] = kernel_CKA_matrix[i, j]  
-    print('layer 25:')
-    print(kernel_CKA_matrix)
-    
-    plt.figure(figsize=(10, 8), dpi=500)  
-    sns.heatmap(kernel_CKA_matrix, annot=False, fmt=".4f", cmap="YlGnBu", vmin=0.0, vmax=1.0)  
-    plt.savefig('kernel-CKA-layer25.png') 
-
-    kernel_CKA_matrix = np.zeros((6, 6))
-    for i in range(6):
-        for j in range(6):
-            if i <= j:
-                activation_i = locals()[f'activation_{i+1}']
-                activation_j = locals()[f'activation_{j+1}']
-                
-                kernel_result = kernel_CKA(activation_i['layer_26_final_output'], activation_j['layer_26_final_output'])
-                
-                kernel_CKA_matrix[i, j] = np.round(kernel_result, 4)
-                kernel_CKA_matrix[j, i] = kernel_CKA_matrix[i, j]  
-    print('layer 26:')
-    print(kernel_CKA_matrix)
-    
-    plt.figure(figsize=(10, 8), dpi=500)  
-    sns.heatmap(kernel_CKA_matrix, annot=False, fmt=".4f", cmap="YlGnBu", vmin=0.0, vmax=1.0)  
-    plt.savefig('kernel-CKA-layer26.png') 
-
-    kernel_CKA_matrix = np.zeros((6, 6))
-    for i in range(6):
-        for j in range(6):
-            if i <= j:
-                activation_i = locals()[f'activation_{i+1}']
-                activation_j = locals()[f'activation_{j+1}']
-                
-                kernel_result = kernel_CKA(activation_i['layer_27_final_output'], activation_j['layer_27_final_output'])
-                
-                kernel_CKA_matrix[i, j] = np.round(kernel_result, 4)
-                kernel_CKA_matrix[j, i] = kernel_CKA_matrix[i, j]  
-    print('layer 27:')
-    print(kernel_CKA_matrix)
-    
-    plt.figure(figsize=(10, 8), dpi=500)  
-    sns.heatmap(kernel_CKA_matrix, annot=False, fmt=".4f", cmap="YlGnBu", vmin=0.0, vmax=1.0)  
-    plt.savefig('kernel-CKA-layer27.png') 
-
-    kernel_CKA_matrix = np.zeros((6, 6))
-    for i in range(6):
-        for j in range(6):
-            if i <= j:
-                activation_i = locals()[f'activation_{i+1}']
-                activation_j = locals()[f'activation_{j+1}']
-                
-                kernel_result = kernel_CKA(activation_i['layer_28_final_output'], activation_j['layer_28_final_output'])
-                
-                kernel_CKA_matrix[i, j] = np.round(kernel_result, 4)
-                kernel_CKA_matrix[j, i] = kernel_CKA_matrix[i, j]  
-    print('layer 28:')
-    print(kernel_CKA_matrix)
-    
-    plt.figure(figsize=(10, 8), dpi=500)  
-    sns.heatmap(kernel_CKA_matrix, annot=False, fmt=".4f", cmap="YlGnBu", vmin=0.0, vmax=1.0)  
-    plt.savefig('kernel-CKA-layer28.png') 
-
-    kernel_CKA_matrix = np.zeros((6, 6))
-    for i in range(6):
-        for j in range(6):
-            if i <= j:
-                activation_i = locals()[f'activation_{i+1}']
-                activation_j = locals()[f'activation_{j+1}']
-                
-                kernel_result = kernel_CKA(activation_i['layer_29_final_output'], activation_j['layer_29_final_output'])
-                
-                kernel_CKA_matrix[i, j] = np.round(kernel_result, 4)
-                kernel_CKA_matrix[j, i] = kernel_CKA_matrix[i, j]  
-    print('layer 29:')
-    print(kernel_CKA_matrix)
-    
-    plt.figure(figsize=(10, 8), dpi=500)  
-    sns.heatmap(kernel_CKA_matrix, annot=False, fmt=".4f", cmap="YlGnBu", vmin=0.0, vmax=1.0)  
-    plt.savefig('kernel-CKA-layer29.png') 
-
-    kernel_CKA_matrix = np.zeros((6, 6))
-    for i in range(6):
-        for j in range(6):
-            if i <= j:
-                activation_i = locals()[f'activation_{i+1}']
-                activation_j = locals()[f'activation_{j+1}']
-                
-                kernel_result = kernel_CKA(activation_i['layer_30_final_output'], activation_j['layer_30_final_output'])
-                
-                kernel_CKA_matrix[i, j] = np.round(kernel_result, 4)
-                kernel_CKA_matrix[j, i] = kernel_CKA_matrix[i, j]  
-    print('layer 30:')
-    print(kernel_CKA_matrix)
-    
-    plt.figure(figsize=(10, 8), dpi=500)  
-    sns.heatmap(kernel_CKA_matrix, annot=False, fmt=".4f", cmap="YlGnBu", vmin=0.0, vmax=1.0)  
-    plt.savefig('kernel-CKA-layer30.png') 
-
-    kernel_CKA_matrix = np.zeros((6, 6))
-    for i in range(6):
-        for j in range(6):
-            if i <= j:
-                activation_i = locals()[f'activation_{i+1}']
-                activation_j = locals()[f'activation_{j+1}']
-                
-                kernel_result = kernel_CKA(activation_i['layer_31_final_output'], activation_j['layer_31_final_output'])
-                
-                kernel_CKA_matrix[i, j] = np.round(kernel_result, 4)
-                kernel_CKA_matrix[j, i] = kernel_CKA_matrix[i, j]  
-
-    print('layer 31:')
-    print(kernel_CKA_matrix)
-    
-    plt.figure(figsize=(10, 8), dpi=500)  
-    sns.heatmap(kernel_CKA_matrix, annot=False, fmt=".4f", cmap="YlGnBu", vmin=0.0, vmax=1.0)  
-    plt.savefig('kernel-CKA-layer31.png') 
-    #     activations_1_value = activation_1[layer_name] 
-    #     activations_2_value = activation_2[layer_name]
-
-    #     linear_result = linear_CKA(activations_1_value, activations_2_value)
-    #     kernel_result = kernel_CKA(activations_1_value, activations_2_value)
-
-    #     cka_sim_linear.append(np.round(linear_result, 4))
-    #     cka_sim_kernel.append(np.round(kernel_result, 4))
-    
-    # print(cka_sim_linear)
-    # print(cka_sim_kernel)
+    for layer in range(32):
+        kernel_CKA_matrix = np.zeros((6, 6))
+        for i in range(6):
+            for j in range(6):
+                if i <= j:
+                    activation_i = activations[i]
+                    activation_j = activations[j]
+                    
+                    kernel_result = kernel_CKA(activation_i[f'layer_{layer}_final_output'], 
+                                               activation_j[f'layer_{layer}_final_output'])
+                    
+                    kernel_CKA_matrix[i, j] = np.round(kernel_result, 4)
+                    kernel_CKA_matrix[j, i] = kernel_CKA_matrix[i, j]
+                    
+        print(f'layer {layer}:')
+        print(kernel_CKA_matrix)
+        
+        plt.figure(figsize=(10, 8), dpi=500)
+        sns.heatmap(kernel_CKA_matrix, annot=False, fmt=".4f", cmap="YlGnBu", vmin=0.0, vmax=1.0)
+        plt.savefig(f'kernel-CKA-layer{layer}.png')
+        plt.close()

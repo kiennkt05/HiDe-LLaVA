@@ -75,11 +75,12 @@ def compare_state_dicts(path1, path2):
         sd1 = load_lora_weights(path1)
         sd2 = load_lora_weights(path2)
         
-        loraA_keys = [k for k in sd1.keys() if '.loraA.0.' in k]
-        loraB_keys = [k for k in sd1.keys() if '.loraB.0.' in k]
-        
-        print_drift_stats("Expert 0 loraA (loraA[0])", loraA_keys, sd1, sd2)
-        print_drift_stats("Expert 0 loraB (loraB[0])", loraB_keys, sd1, sd2)
+        for i in range(6):
+            loraA_keys = [k for k in sd1.keys() if f'.loraA.{i}.' in k]
+            loraB_keys = [k for k in sd1.keys() if f'.loraB.{i}.' in k]
+            
+            print_drift_stats(f"Expert {i} loraA (loraA[{i}])", loraA_keys, sd1, sd2)
+            print_drift_stats(f"Expert {i} loraB (loraB[{i}])", loraB_keys, sd1, sd2)
                 
     except Exception as e:
         print(f"Could not load LoRA weights: {e}")

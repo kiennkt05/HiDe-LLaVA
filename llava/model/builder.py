@@ -22,7 +22,10 @@ import torch
 from llava.model import *
 from llava.constants import DEFAULT_IMAGE_PATCH_TOKEN, DEFAULT_IM_START_TOKEN, DEFAULT_IM_END_TOKEN
 
-sys.path.append('/mnt/haiyangguo/mywork/CL-MLLM/LLaVA-HiDe')
+# Dynamically resolve repo root so HiDe.peft imports from the local HiDe/ directory
+_repo_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if _repo_root not in sys.path:
+    sys.path.insert(0, _repo_root)
 
 def load_pretrained_model(model_path, model_base, model_name, load_8bit=False, load_4bit=False, device_map="auto", device="cuda", text_tower=None, **kwargs):
     kwargs = {"device_map": device_map, **kwargs}
