@@ -1,5 +1,6 @@
 import argparse
 import torch
+import gc
 import os
 import json
 from tqdm import tqdm
@@ -55,7 +56,8 @@ class CustomDataset(Dataset):
         conv.append_message(conv.roles[1], None)
         prompt = conv.get_prompt()
 
-        image = Image.open(os.path.join(self.image_folder, image_file)).convert('RGB')
+        image_path = os.path.expanduser(os.path.join(self.image_folder, image_file))
+        image = Image.open(image_path).convert('RGB')
         image_tensor = process_images([image], self.image_processor, self.model_config)[0]
 
         input_ids = tokenizer_image_token(prompt, self.tokenizer, IMAGE_TOKEN_INDEX, return_tensors='pt')
@@ -118,8 +120,11 @@ def hook_fn(name, activation_values):
     return hook
 
 def register_hooks(model, activation_values):
+    hooks = []
     for i, layer in enumerate(model.model.layers):
-        layer.mlp.down_proj.register_forward_hook(hook_fn(f'layer_{i}_final_output', activation_values))
+        h = layer.mlp.down_proj.register_forward_hook(hook_fn(f'layer_{i}_final_output', activation_values))
+        hooks.append(h)
+    return hooks
 
 # DataLoader
 def create_data_loader(questions, image_folder, tokenizer, image_processor, model_config, batch_size=1, num_workers=4):
@@ -134,23 +139,25 @@ def eval_model(args):
     disable_torch_init()
     model_path = os.path.expanduser(args.model_path)
     model_name = get_model_name_from_path(model_path)
-    tokenizer, model, image_processor, context_len = load_pretrained_model(model_path, args.model_base, model_name)
+    tokenizer, model, image_processor, context_len = load_pretrained_model(model_path, args.model_base, model_name, text_tower=args.text_tower)
 
     activation_values = defaultdict(list)
-    register_hooks(model, activation_values)
+    hooks = register_hooks(model, activation_values)
 
     with open(os.path.expanduser(args.question_file), "r") as f:
         questions = json.load(f)
     questions = get_chunk(questions, args.num_chunks, args.chunk_idx)
     answers_file = os.path.expanduser(args.answers_file)
-    os.makedirs(os.path.dirname(answers_file), exist_ok=True)
+    answers_dir = os.path.dirname(answers_file)
+    if answers_dir:
+        os.makedirs(answers_dir, exist_ok=True)
     ans_file = open(answers_file, "w")
 
     if 'plain' in model_name and 'finetune' not in model_name.lower() and 'mmtag' not in args.conv_mode:
         args.conv_mode = args.conv_mode + '_mmtag'
         print(f'It seems that this is a plain model, but it is not using a mmtag prompt, auto switching to {args.conv_mode}.')
 
-    data_loader = create_data_loader(questions, args.image_folder, tokenizer, image_processor, model.config)
+    data_loader = create_data_loader(questions, os.path.expanduser(args.image_folder), tokenizer, image_processor, model.config)
 
     num = 1
     for (input_ids, image_tensor), line in tqdm(zip(data_loader, questions), total=len(questions)):
@@ -190,79 +197,180 @@ def eval_model(args):
         # ans_file.flush()
     for layer_name, activations in activation_values.items():
         activation_values[layer_name] = torch.cat(activations, dim=0)
+
+    # Memory Cleanup
+    for h in hooks:
+        h.remove()
+    del model
+    del tokenizer
+    gc.collect()
+    torch.cuda.empty_cache()
+
     for layer_name, activations in activation_values.items():
         activation_values[layer_name] = activations.cpu().numpy()
     ans_file.close()
 
     return activation_values
 
+def compute_l2_drift(X, Y):
+    """
+    Computes the mean L2 (Euclidean) distance between two sets of activations.
+    X and Y should be arrays of shape (num_samples, hidden_dim).
+    """
+    return np.linalg.norm(X - Y, ord=2, axis=1).mean()
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model-path", type=str, default="facebook/opt-350m")
-    parser.add_argument("--model-base", type=str, default="~/Documents/kienNguyen/HiDe-LLaVA/llava-7b-v1-5")
+    parser.add_argument("--model_path", type=str, default="facebook/opt-350m")
+    parser.add_argument("--model_base", type=str, default="~/Documents/kienNguyen/HiDe-LLaVA/llava-7b-v1-5")
     parser.add_argument("--base_dir", type=str, default="~/Documents/kienNguyen/HiDe-LLaVA/HiDe_1")
     parser.add_argument("--run_type", type=str, default="Task")
-    parser.add_argument("--image-folder", type=str, default="")
-    parser.add_argument("--question-file", type=str, default="tables/question.jsonl")
-    parser.add_argument("--answers-file", type=str, default="answer.jsonl")
-    parser.add_argument("--conv-mode", type=str, default="llava_v1")
-    parser.add_argument("--num-chunks", type=int, default=1)
-    parser.add_argument("--chunk-idx", type=int, default=0)
+    parser.add_argument("--image_folder", type=str, default="~/Documents/kienNguyen/HiDe-LLaVA/UCIT/datasets")
+    parser.add_argument("--question_file", type=str, default="tables/question.jsonl")
+    parser.add_argument("--answers_file", type=str, default="answer.jsonl")
+    parser.add_argument("--conv_mode", type=str, default="llava_v1")
+    parser.add_argument("--num_chunks", type=int, default=1)
+    parser.add_argument("--chunk_idx", type=int, default=0)
     parser.add_argument("--temperature", type=float, default=0.0)
     parser.add_argument("--top_p", type=float, default=None)
     parser.add_argument("--num_beams", type=int, default=1)
     parser.add_argument("--max_new_tokens", type=int, default=128)
+    parser.add_argument("--text_tower", type=str, default="/home/s24gbn1/Documents/kienNguyen/HiDe-LLaVA/clip-vit-large-patch14-336")
     args = parser.parse_args()
 
     BASE_MODEL = os.path.expanduser(args.model_base) if args.model_base else None
 
-    configs = [
-        {"question_file": "~/Documents/kienNguyen/HiDe-LLaVA/UCIT/instructions/ImageNet-R/test_3000.json",
-         "model_path": f"{args.base_dir}/Task1_llava_lora_ours"},
-        {"question_file": "~/Documents/kienNguyen/HiDe-LLaVA/UCIT/instructions/ArxivQA/test_3000.json",
-         "model_path": f"{args.base_dir}/{args.run_type}2_llava_lora_ours"},
-        {"question_file": "~/Documents/kienNguyen/HiDe-LLaVA/UCIT/instructions/VizWiz/test_3000.json",
-         "model_path": f"{args.base_dir}/{args.run_type}3_llava_lora_ours"},
-        {"question_file": "~/Documents/kienNguyen/HiDe-LLaVA/UCIT/instructions/IconQA/test_3000.json",
-         "model_path": f"{args.base_dir}/{args.run_type}4_llava_lora_ours"},
-        {"question_file": "~/Documents/kienNguyen/HiDe-LLaVA/UCIT/instructions/CLEVR/test_3000.json",
-         "model_path": f"{args.base_dir}/{args.run_type}5_llava_lora_ours"},
-        {"question_file": "~/Documents/kienNguyen/HiDe-LLaVA/UCIT/instructions/Flickr30k/test_3000.json",
-         "model_path": f"{args.base_dir}/{args.run_type}6_llava_lora_ours"},
+    question_files = [
+        "~/Documents/kienNguyen/HiDe-LLaVA/UCIT/instructions/ImageNet-R/test_3000.json",
+        "~/Documents/kienNguyen/HiDe-LLaVA/UCIT/instructions/ArxivQA/test_3000.json",
+        "~/Documents/kienNguyen/HiDe-LLaVA/UCIT/instructions/VizWiz/test_3000.json",
+        "~/Documents/kienNguyen/HiDe-LLaVA/UCIT/instructions/IconQA/test_3000.json",
+        "~/Documents/kienNguyen/HiDe-LLaVA/UCIT/instructions/CLEVR/test_3000.json",
+        "~/Documents/kienNguyen/HiDe-LLaVA/UCIT/instructions/Flickr30k/test_3000.json",
+    ]
+    model_paths = [
+        f"{args.base_dir}/Task1_llava_lora_ours",
+        f"{args.base_dir}/{args.run_type}2_llava_lora_ours",
+        f"{args.base_dir}/{args.run_type}3_llava_lora_ours",
+        f"{args.base_dir}/{args.run_type}4_llava_lora_ours",
+        f"{args.base_dir}/{args.run_type}5_llava_lora_ours",
+        f"{args.base_dir}/{args.run_type}6_llava_lora_ours",
     ]
 
-    for idx, config in enumerate(configs, start=1):
-        args.question_file = config["question_file"]
-        args.model_path = config["model_path"]
+    os.makedirs(os.path.expanduser(f"./HeatMap/activations/{args.run_type}"), exist_ok=True)
+    for idx, model_path in enumerate(model_paths):
+        args.model_path = model_path
         args.model_base = BASE_MODEL
-        
-        act = eval_model(args)
-        with open(f'activation_{idx}.pkl', 'wb') as f:
-            pickle.dump(act, f)
+        args.text_tower = os.path.expanduser(args.text_tower)
+        for i, question_file in enumerate(question_files):
+            if i > idx:
+                break
+            print(f"===> Evaluate {model_path} on {question_file}\n")
+            args.question_file = question_file
+            act = eval_model(args)
+            with open(f'./HeatMap/activations/{args.run_type}/activation_{args.run_type}{idx+1}_task{i+1}.pkl', 'wb') as f:
+                pickle.dump(act, f)
 
-    activations = []
-    for idx in range(1, len(configs) + 1):
-        with open(f'activation_{idx}.pkl', 'rb') as f:
-            activations.append(pickle.load(f))
+    output_dir = os.path.expanduser(f"./HeatMap/CKA/{args.run_type}/")
+    os.makedirs(output_dir, exist_ok=True)
 
-    for layer in range(32):
-        kernel_CKA_matrix = np.zeros((6, 6))
-        for i in range(6):
-            for j in range(6):
-                if i <= j:
-                    activation_i = activations[i]
-                    activation_j = activations[j]
-                    
-                    kernel_result = kernel_CKA(activation_i[f'layer_{layer}_final_output'], 
-                                               activation_j[f'layer_{layer}_final_output'])
-                    
-                    kernel_CKA_matrix[i, j] = np.round(kernel_result, 4)
-                    kernel_CKA_matrix[j, i] = kernel_CKA_matrix[i, j]
-                    
-        print(f'layer {layer}:')
-        print(kernel_CKA_matrix)
+    for i in range(6):
+        task_idx = i + 1
+        available_model_indices = [m_idx + 1 for m_idx in range(len(model_paths)) if m_idx >= i]
+        num_models = len(available_model_indices)
         
-        plt.figure(figsize=(10, 8), dpi=500)
-        sns.heatmap(kernel_CKA_matrix, annot=False, fmt=".4f", cmap="YlGnBu", vmin=0.0, vmax=1.0)
-        plt.savefig(f'kernel-CKA-layer{layer}.png')
+        if num_models < 2:
+            print(f"Skipping CKA for Task {task_idx}: only {num_models} model(s) available.")
+            continue
+
+        print(f"Calculating CKA for Task {task_idx} across {num_models} models...")
+        
+        # Load relevant activations for this dataset
+        task_activations = []
+        for m_idx in available_model_indices:
+            filename = f'./HeatMap/activations/{args.run_type}/activation_{args.run_type}{m_idx}_task{task_idx}.pkl'
+            with open(filename, 'rb') as f:
+                task_activations.append(pickle.load(f))
+        
+        labels = [f"{args.run_type}{m_idx}" for m_idx in available_model_indices]
+
+        for layer in range(32):
+            kernel_CKA_matrix = np.zeros((num_models, num_models))
+            for row in range(num_models):
+                for col in range(num_models):
+                    if row <= col:
+                        res = kernel_CKA(task_activations[row][f'layer_{layer}_final_output'], 
+                                        task_activations[col][f'layer_{layer}_final_output'])
+                        kernel_CKA_matrix[row, col] = np.round(res, 4)
+                        kernel_CKA_matrix[col, row] = kernel_CKA_matrix[row, col]
+            
+            plt.figure(figsize=(10, 8), dpi=300)
+            sns.heatmap(kernel_CKA_matrix, annot=False, fmt=".4f", cmap="YlGnBu", 
+                        vmin=0.0, vmax=1.0, xticklabels=labels, yticklabels=labels)
+            plt.title(f"CKA Similarity - Task {task_idx} - Layer {layer}")
+            plt.savefig(os.path.join(output_dir, f"CKA_{args.run_type}{task_idx}_layer{layer}.png"))
+            plt.close()
+
+    # ==========================================
+    # L2 Drift Computation and Visualization
+    # ==========================================
+    
+    l2_output_dir = os.path.expanduser(f"./HeatMap/L2_Drift/{args.run_type}/")
+    os.makedirs(l2_output_dir, exist_ok=True)
+
+    # We compute drift for tasks 1 to 5 against all subsequent models
+    for task_idx in range(1, 6):
+        reference_model_idx = task_idx
+        # Find all models that were trained AFTER the reference model
+        later_model_indices = [m_idx for m_idx in range(reference_model_idx + 1, 7)]
+        
+        if not later_model_indices:
+            continue
+            
+        print(f"Calculating L2 Drift for Task {task_idx} (Model {reference_model_idx} vs Models {later_model_indices})...")
+        
+        # Load the reference activations (the model right after learning the task)
+        ref_filename = f'activation_{args.run_type}{reference_model_idx}_task{task_idx}.pkl'
+        try:
+            with open(ref_filename, 'rb') as f:
+                ref_activations = pickle.load(f)
+        except FileNotFoundError:
+            print(f"  -> Missing reference file: {ref_filename}. Skipping Task {task_idx}.")
+            continue
+            
+        # Dictionary to store drift values for plotting: {model_idx: [drift_layer_0, ..., drift_layer_31]}
+        drift_results = {m_idx: [] for m_idx in later_model_indices}
+        
+        for m_idx in later_model_indices:
+            eval_filename = f'activation_{args.run_type}{m_idx}_task{task_idx}.pkl'
+            try:
+                with open(eval_filename, 'rb') as f:
+                    eval_activations = pickle.load(f)
+            except FileNotFoundError:
+                print(f"  -> Missing evaluation file: {eval_filename}. Skipping comparison.")
+                continue
+                
+            for layer in range(32):
+                ref_act = ref_activations[f'layer_{layer}_final_output']
+                eval_act = eval_activations[f'layer_{layer}_final_output']
+                
+                drift = compute_l2_drift(ref_act, eval_act)
+                drift_results[m_idx].append(drift)
+        
+        # Plotting L2 Drift across all layers for the current task
+        plt.figure(figsize=(12, 6), dpi=300)
+        colors = sns.color_palette("husl", len(later_model_indices))
+        
+        for i, m_idx in enumerate(later_model_indices):
+            if len(drift_results[m_idx]) == 32:
+                plt.plot(range(32), drift_results[m_idx], marker='o', markersize=4, 
+                         color=colors[i], label=f'Model {m_idx} vs Model {reference_model_idx}')
+            
+        plt.title(f"L2 Feature Drift across Layers - Task {task_idx} Baseline", fontsize=14)
+        plt.xlabel("Layer Index", fontsize=12)
+        plt.ylabel("Mean L2 Distance", fontsize=12)
+        plt.legend()
+        plt.grid(True, linestyle='--', alpha=0.6)
+        plt.tight_layout()
+        plt.savefig(os.path.join(l2_output_dir, f"L2_Drift_{run_type}{task_idx}.png"))
         plt.close()

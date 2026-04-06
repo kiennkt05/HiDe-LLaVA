@@ -56,15 +56,15 @@ def load_pretrained_model(model_path, model_base, model_name, load_8bit=False, l
             print('Loading LLaVA from base model...')
             model = LlavaLlamaForCausalLM.from_pretrained(model_base, low_cpu_mem_usage=True, config=lora_cfg_pretrained, **kwargs)
 
-            clip_tokenizer = AutoTokenizer.from_pretrained(
-                text_tower,
-                cache_dir=None,
-                model_max_length=77,
-                padding_side="right",
-                use_fast=True,
-            )
-
-            model.set_clip_tokenizer(clip_tokenizer)
+            if text_tower is not None:
+                clip_tokenizer = AutoTokenizer.from_pretrained(
+                    text_tower,
+                    cache_dir=None,
+                    model_max_length=77,
+                    padding_side="right",
+                    use_fast=True,
+                )
+                model.set_clip_tokenizer(clip_tokenizer)
             model.set_tokenizer(tokenizer)
             token_num, tokem_dim = model.lm_head.out_features, model.lm_head.in_features
             if model.lm_head.weight.shape[0] != token_num:
@@ -161,9 +161,9 @@ def load_pretrained_model(model_path, model_base, model_name, load_8bit=False, l
         image_processor = vision_tower.image_processor
 
         text_tower = model.get_text_tower()
-        if not text_tower.is_loaded:
+        if text_tower is not None and not text_tower.is_loaded:
             text_tower.load_model()
-        text_tower.to(device=device, dtype=torch.float16)
+            text_tower.to(device=device, dtype=torch.float16)
 
     if hasattr(model.config, "max_sequence_length"):
         context_len = model.config.max_sequence_length
