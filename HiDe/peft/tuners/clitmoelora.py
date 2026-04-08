@@ -423,10 +423,12 @@ class HiDeMOELoraLinear(nn.Linear, HiDeMOELoraLayer):
                             * self.scaling[self.active_adapter]
                             * self.expert_weight[i]
                         )
-                elif int(self.layer) != 31:
-                    # Forward through HiDeMOELinearA.forward() (Would call loraA[0] for variant A)
-                    # Then use expert_weight to weight the output of loraB
-                    if getattr(self, "variant", "standard") == "A":
+                elif getattr(self, "variant", "standard") == "AB":
+                    lora_a_output = self.lora_A[self.active_adapter](self.lora_dropout[self.active_adapter](x))
+                    lora_b_output = self.lora_B[self.active_adapter](lora_a_output)
+                    result += lora_b_output * self.scaling[self.active_adapter]
+                elif getattr(self, "variant", "standard") == "A":
+                    if int(self.layer) != 31:
                         lora_a_output = self.lora_A[self.active_adapter](self.lora_dropout[self.active_adapter](x))
                         for i in range(len(self.expert_weight)):
                             result += (
@@ -434,21 +436,27 @@ class HiDeMOELoraLinear(nn.Linear, HiDeMOELoraLayer):
                                 * self.scaling[self.active_adapter]
                                 * self.expert_weight[i]
                             )
-                    # Variant 'AB' would always call loraA[0] and loraB[0] by default in forward() pass
-                    # Variant 'standard' work is unchanged
                     else:
-                        lora_a_output = self.lora_A[self.active_adapter](self.lora_dropout[self.active_adapter](x))
-                        lora_b_output = self.lora_B[self.active_adapter](lora_a_output)
-                        result += lora_b_output * self.scaling[self.active_adapter]
-                else:
+                        for i in range(len(self.expert_weight)):
+                            result += (
+                                self.lora_B[self.active_adapter].loraB[i](
+                                    self.lora_A[self.active_adapter].loraA[i](self.lora_dropout[self.active_adapter](x)),
+                                )
+                                * self.scaling[self.active_adapter]
+                                * self.expert_weight[i]
+                            )
+                elif getattr(self, "variant", "standard") == "standard":
+                    # Remove the fusion stage for the first 31 layers
                     for i in range(len(self.expert_weight)):
-                        result += ( # lora process
+                        result += (
                             self.lora_B[self.active_adapter].loraB[i](
                                 self.lora_A[self.active_adapter].loraA[i](self.lora_dropout[self.active_adapter](x)),
                             )
                             * self.scaling[self.active_adapter]
                             * self.expert_weight[i]
                         )
+                else:
+                    raise ValueError(f"Unknown variant: {self.variant}")
         else:
             result = F.linear(x, transpose(self.weight, self.fan_in_fan_out), bias=self.bias)
 
@@ -484,36 +492,25 @@ class HiDeMOELinearA(nn.Module):
         '''input x is a vector, return output is a list'''
         if self.training:
             assert 0 <= self.cur_task < self.expert_num, "Invalid current_task value"
-            if getattr(self, "variant", "standard") == "fA":
+            if getattr(self, "variant", "standard") == "fA" or (getattr(self, "variant", "standard") in ["A", "AB"] and int(self.layer) != 31):
                 output = self.loraA[0](x)
-                return output
-            if getattr(self, "variant", "standard") in ["A", "AB"] and int(self.layer) != 31:
-                output = self.loraA[0](x)
-                return output
-            output = self.loraA[self.cur_task](x)
+            elif getattr(self, "variant", "standard") == "standard" or (getattr(self, "variant", "standard") in ["A", "AB"] and int(self.layer) == 31):
+                output = self.loraA[self.cur_task](x)
+            else:
+                raise ValueError(f"Unknown variant: {self.variant}")
             return output
         else:
-            merge_weight = 1.0
-            if getattr(self, "variant", "standard") == "fA":
-                output = F.linear(x, self.loraA[0].weight)
+            if getattr(self, "variant", "standard") == "fA" or (getattr(self, "variant", "standard") in ["A", "AB"] and int(self.layer) != 31):
+                output = self.loraA[0](x)
                 return output
-            elif int(self.layer) != 31:
-                if getattr(self, "variant", "standard") in ["A", "AB"]:
-                    fused_weight = self.loraA[0].weight
-                else:
-                    fused_weight = torch.zeros((self.r, self.in_features), device=x.device)
-                    for i in range(self.cur_task + 1):
-                        fused_weight += merge_weight * self.loraA[i].weight
-
-                output = F.linear(x, fused_weight)
-
-                return output
-            else:
+            elif getattr(self, "variant", "standard") == "standard" or (getattr(self, "variant", "standard") in ["A", "AB"] and int(self.layer) == 31):
+                # This block is actually not used in the inference phase
                 outputs = []
                 for i in range(self.expert_num):
                     outputs.append(self.loraA[i](x))
-
                 return outputs
+            else:
+                raise ValueError(f"Unknown variant: {self.variant}")
                 
 
 
@@ -547,26 +544,18 @@ class HiDeMOELinearB(nn.Module):
             if getattr(self, "variant", "standard") == "AB" and int(self.layer) != 31:
                 output = self.loraB[0](x)
                 return output
-            output = self.loraB[self.cur_task](x)
-            return output
+            else:
+                output = self.loraB[self.cur_task](x)
+                return output
         else:
-            merge_weight = 1.0
-            if int(self.layer) != 31:
-                if getattr(self, "variant", "standard") == "AB":
-                    fused_weight = self.loraB[0].weight
-                else:
-                    fused_weight = torch.zeros((self.out_features, self.r), device=x.device)
-                    for i in range(self.cur_task + 1):
-                        fused_weight += merge_weight * self.loraB[i].weight
-
-                output = F.linear(x, fused_weight)
-
+            if int(self.layer) != 31 and getattr(self, "variant", "standard") == "AB":
+                output = self.loraB[0](x)
                 return output
             else:
+                # This block is actually not used in the inference phase
                 outputs = []
                 for i in range(self.expert_num):
                     outputs.append(self.loraB[i](x[i]))
-
                 return outputs
 
 
