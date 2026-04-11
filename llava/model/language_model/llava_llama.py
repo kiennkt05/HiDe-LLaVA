@@ -24,6 +24,7 @@ from transformers import AutoConfig, AutoModelForCausalLM, \
 from transformers.modeling_outputs import CausalLMOutputWithPast
 
 from ..llava_arch import LlavaMetaModel, LlavaMetaForCausalLM
+from ..rpfc import RPFC
 
 
 class LlavaConfig(LlamaConfig):
@@ -71,6 +72,14 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
             )
 
         self.expert_weight = [0., 0., 0., 0., 0., 0., 0., 0., 0., 0.]
+
+        # Initialize RPFC
+        self.rpfc = RPFC(
+            M=getattr(config, 'rpfc_M', 10000),
+            ridge=getattr(config, 'rpfc_ridge', 1e4),
+            embed_dim=getattr(config, 'hidden_size', 1024),
+            num_classes=self.expert_num
+        )
 
     def set_cur_task(self, cur_task, expert_num):
         self.cur_task = cur_task

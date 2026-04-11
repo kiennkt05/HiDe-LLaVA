@@ -123,6 +123,10 @@ class TrainingArguments(transformers.TrainingArguments):
     mm_projector_lr: Optional[float] = None
     group_by_modality_length: bool = field(default=False)
 
+    # RPFC
+    rpfc_enable: bool = False
+    rpfc_ridge: float = 1e4
+    rpfc_M: int = 10000
 
 def maybe_zero_3(param, ignore_status=False, name=None):
     from deepspeed import zero
@@ -783,6 +787,13 @@ def load_model_from_previous_task(model, previous_task_model_path):
     #     model.lm_head.weight = torch.nn.Parameter(torch.empty(token_num, tokem_dim, device=model.device, dtype=model.dtype))
     #     model.model.embed_tokens.weight = torch.nn.Parameter(torch.empty(token_num, tokem_dim, device=model.device, dtype=model.dtype))
 
+    # Load RPFC weights
+    print('Loading RPFC weights...')
+    rpfc_path = os.path.join(previous_task_model_path, 'rpfc.bin')
+    if os.path.exists(rpfc_path):
+        rpfc_sd = torch.load(rpfc_path, map_location='cpu')
+        model.base_model.model.rpfc.load_state_dict(rpfc_sd, strict=True)
+
     print('Loading additional LLaVA weights...')
     if os.path.exists(os.path.join(previous_task_model_path, 'non_lora_trainables.bin')):
         non_lora_trainables = torch.load(os.path.join(previous_task_model_path, 'non_lora_trainables.bin'), map_location='cpu')
@@ -1037,6 +1048,12 @@ def train():
             model.config.save_pretrained(training_args.output_dir)
             model.save_pretrained(training_args.output_dir, state_dict=state_dict)
             torch.save(non_lora_state_dict, os.path.join(training_args.output_dir, 'non_lora_trainables.bin'))
+            # Save RPFC (same module as training-time self.rpfc; flush fc from accumulated Q, G)
+            model.base_model.model.rpfc.update()
+            torch.save(
+                model.base_model.model.rpfc.state_dict(),
+                os.path.join(training_args.output_dir, 'rpfc.bin'),
+            )
         print('image_boundary: {}'.format(torch.cat([param for param in model.image_boundary], dim=0).float().detach().cpu().numpy()))
         print('text_boundary: {}'.format(torch.cat([param for param in model.text_boundary], dim=0).float().detach().cpu().numpy()))
     else:

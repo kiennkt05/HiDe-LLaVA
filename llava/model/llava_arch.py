@@ -192,28 +192,45 @@ class LlavaMetaForCausalLM(ABC):
 
             self.image_anchors[task_id] = image_sum / self.image_boundary[task_id]
             self.text_anchors[task_id] = text_sum / self.text_boundary[task_id]
+
+            # Convert task_id integer into a batched 1D tensor
+            batch_size = current_image_features.size(0)
+            task_labels = torch.full((batch_size,), task_id, dtype=torch.long, device=current_image_features.device)
+            
+            # Apply RPFC during training phase
+            self.rpfc.collect(current_image_features, task_labels)
         else:
-            image_sim = []
-            text_sim = []
-            for image_anchor in self.image_anchors:
-                image_sims = F.cosine_similarity(image_guide_features.unsqueeze(1), image_anchor, dim=2)
-                image_sim.append(image_sims.max().item())
-            for text_anchor in self.text_anchors:
-                text_sims = F.cosine_similarity(text_guide_features.unsqueeze(1), text_anchor, dim=2)
-                text_sim.append(text_sims.max().item())
+            if self.rpfc_enable:
+                # REAR mechanism
+                self.rpfc.update()
+                expert_logits = self.rpfc.forward(image_guide_features)
+                expert_index = torch.argmax(expert_logits, dim=-1).item()
+                compute_expert_weight = [0.0] * self.num_experts
+                compute_expert_weight[expert_index] = 1.0
+            else:
+                # Original HiDe router
+                image_sim = []
+                text_sim = []
+                # Only compare with existing anchors
+                for image_anchor in self.image_anchors[:self.num_experts]:
+                    image_sims = F.cosine_similarity(image_guide_features.unsqueeze(1), image_anchor, dim=2)
+                    image_sim.append(image_sims.max().item())
+                for text_anchor in self.text_anchors[:self.num_experts]:
+                    text_sims = F.cosine_similarity(text_guide_features.unsqueeze(1), text_anchor, dim=2)
+                    text_sim.append(text_sims.max().item())
 
-            image_sim = np.array(image_sim[:self.expert_num]) 
-            text_sim = np.array(text_sim[:self.expert_num])  
+                image_sim = np.array(image_sim) 
+                text_sim = np.array(text_sim)
+                
+                sim = (image_sim + text_sim) / 2
 
-            sim = (image_sim + text_sim) / 2
+                sim_tensor = torch.tensor(sim, dtype=torch.float32)
 
-            sim_tensor = torch.tensor(sim, dtype=torch.float32)
+                sim_softmax = F.softmax(sim_tensor / 0.1)
 
-            sim_softmax = F.softmax(sim_tensor / 0.1)
-
-            # compute_expert_weight = torch.sigmoid(shifted_conf).tolist()
-            compute_expert_weight = sim_softmax.tolist()
-            # print(compute_expert_weight)
+                # compute_expert_weight = torch.sigmoid(shifted_conf).tolist()
+                compute_expert_weight = sim_softmax.tolist()
+                # print(compute_expert_weight)
 
             import os
             import json
