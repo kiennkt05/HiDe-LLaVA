@@ -128,6 +128,8 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
         return_dict: Optional[bool] = None,
         **kwargs,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
+        
+        rpfc_collect = kwargs.pop("rpfc_collect", getattr(self.config, "rpfc_collect", False))
 
         if inputs_embeds is None:
             (
@@ -145,6 +147,10 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
                 labels,
                 images
             )
+
+        if rpfc_collect:
+            return CausalLMOutputWithPast(loss=torch.tensor(0.0).to(input_ids.device) if labels is not None else None)
+
         return super().forward(
             input_ids=input_ids,
             attention_mask=attention_mask,

@@ -204,6 +204,17 @@ class LlavaMetaForCausalLM(ABC):
                 # REAR mechanism
                 self.rpfc.update()
                 expert_logits = self.rpfc.forward(image_guide_features)
+                
+                # Save expert weights from RPFC
+                import os
+                import json
+                results_final_dir = os.environ.get("RESULTS_FINAL_DIR", "results")
+                os.makedirs(results_final_dir, exist_ok=True)
+                # Compute softmax
+                expert_logits_weights = F.softmax(expert_logits, dim=-1)
+                with open(os.path.join(results_final_dir, "expert_weight.jsonl"), "a") as f:
+                    f.write(json.dumps(expert_logits_weights.tolist()) + "\n")
+                
                 expert_index = torch.argmax(expert_logits, dim=-1).item()
                 compute_expert_weight = [0.0] * self.num_experts
                 compute_expert_weight[expert_index] = 1.0
@@ -232,12 +243,12 @@ class LlavaMetaForCausalLM(ABC):
                 compute_expert_weight = sim_softmax.tolist()
                 # print(compute_expert_weight)
 
-            import os
-            import json
-            results_final_dir = os.environ.get("RESULTS_FINAL_DIR", "results")
-            os.makedirs(results_final_dir, exist_ok=True)
-            with open(os.path.join(results_final_dir, "expert_weight.jsonl"), "a") as f:
-                f.write(json.dumps(compute_expert_weight) + "\n")
+                import os
+                import json
+                results_final_dir = os.environ.get("RESULTS_FINAL_DIR", "results")
+                os.makedirs(results_final_dir, exist_ok=True)
+                with open(os.path.join(results_final_dir, "expert_weight.jsonl"), "a") as f:
+                    f.write(json.dumps(compute_expert_weight) + "\n")
 
             proj_names = [
                 'q_proj', 'k_proj', 'v_proj', 'o_proj',  # self_attn 

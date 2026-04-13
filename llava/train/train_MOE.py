@@ -124,6 +124,7 @@ class TrainingArguments(transformers.TrainingArguments):
     group_by_modality_length: bool = field(default=False)
 
     # RPFC
+    rpfc_collect: bool = False # Run forward pass to collect rpfc only
     rpfc_enable: bool = False
     rpfc_ridge: float = 1e4
     rpfc_M: int = 10000
