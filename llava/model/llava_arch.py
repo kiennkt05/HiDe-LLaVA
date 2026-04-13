@@ -200,7 +200,7 @@ class LlavaMetaForCausalLM(ABC):
             # Apply RPFC during training phase
             self.rpfc.collect(current_image_features, task_labels)
         else:
-            if self.rpfc_enable:
+            if getattr(self.config, "rpfc_enable", False):
                 # REAR mechanism
                 self.rpfc.update()
                 expert_logits = self.rpfc.forward(image_guide_features)

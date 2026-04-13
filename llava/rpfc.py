@@ -6,8 +6,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-import models.vit as vit
-
 logger = logging.getLogger()
 
 class RPFC(nn.Module):
@@ -49,16 +47,16 @@ class RPFC(nn.Module):
         return onehot
 
     def collect(self, features, labels):
-        features = features.detach()
+        features = features.detach().to(torch.float32)
         labels = labels.detach()
 
         if self.use_rp:
-            features_h = F.relu(features @ self.W_rand)
+            features_h = F.relu(features @ self.W_rand.to(torch.float32))
         else:
             features_h = features
-        Y = self.target2onehot(labels)
-        self.Q = self.Q + features_h.T @ Y
-        self.G = self.G + features_h.T @ features_h
+        Y = self.target2onehot(labels).to(torch.float32)
+        self.Q = self.Q.to(torch.float32) + features_h.T @ Y
+        self.G = self.G.to(torch.float32) + features_h.T @ features_h
 
     def update(self):
         device = self.fc.weight.device

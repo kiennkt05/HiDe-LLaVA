@@ -186,7 +186,7 @@ def get_mm_adapter_state_maybe_zero_3(named_params, keys_to_match):
 def find_all_linear_names(model):
     cls = torch.nn.Linear
     lora_module_names = set()
-    multimodal_keywords = ['mm_projector', 'vision_tower', 'vision_resampler']
+    multimodal_keywords = ['mm_projector', 'vision_tower', 'vision_resampler', 'rpfc']
     for name, module in model.named_modules():
         if any(mm_keyword in name for mm_keyword in multimodal_keywords):
             continue
@@ -1017,7 +1017,12 @@ def train():
     model.set_clip_tokenizer(clip_tokenizer)
     model.set_tokenizer(tokenizer)
     model.set_cur_task(model_args.cur_task, model_args.expert_num)
-
+    
+    model.config.rpfc_collect = getattr(training_args, 'rpfc_collect', False)
+    model.config.rpfc_enable = getattr(training_args, 'rpfc_enable', False)
+    print(f"RPFC collect: {model.config.rpfc_collect}")
+    print(f"RPFC enable: {model.config.rpfc_enable}")
+    
     if model_args.previous_task_model_path is not None:
         # load model from previous task
         load_model_from_previous_task(model, model_args.previous_task_model_path)

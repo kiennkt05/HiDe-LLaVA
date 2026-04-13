@@ -24,7 +24,7 @@ from transformers import AutoConfig, AutoModelForCausalLM, \
 from transformers.modeling_outputs import CausalLMOutputWithPast
 
 from ..llava_arch import LlavaMetaModel, LlavaMetaForCausalLM
-from ..rpfc import RPFC
+from llava.rpfc import RPFC
 
 
 class LlavaConfig(LlamaConfig):
@@ -77,7 +77,7 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
         self.rpfc = RPFC(
             M=getattr(config, 'rpfc_M', 10000),
             ridge=getattr(config, 'rpfc_ridge', 1e4),
-            embed_dim=getattr(config, 'hidden_size', 1024),
+            embed_dim=768,
             num_classes=self.expert_num
         )
 
@@ -149,7 +149,9 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
             )
 
         if rpfc_collect:
-            return CausalLMOutputWithPast(loss=torch.tensor(0.0).to(input_ids.device) if labels is not None else None)
+            device = inputs_embeds.device if inputs_embeds is not None else (input_ids.device if input_ids is not None else labels.device)
+            loss = torch.tensor(0.0, device=device, requires_grad=True) if labels is not None else None
+            return CausalLMOutputWithPast(loss=loss)
 
         return super().forward(
             input_ids=input_ids,
