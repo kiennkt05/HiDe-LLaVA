@@ -1033,6 +1033,16 @@ def train():
     #     trainer.train(resume_from_checkpoint=True)
     # else:
     trainer.train()
+
+    if training_args.rpfc_collect:
+        if training_args.local_rank == 0 or training_args.local_rank == -1:
+            model.base_model.model.rpfc.update()
+            torch.save(
+                model.base_model.model.rpfc.state_dict(),
+                os.path.join(training_args.output_dir, 'rpfc.bin'),
+            )
+        return
+
     trainer.save_state()
 
     model.config.use_cache = True
